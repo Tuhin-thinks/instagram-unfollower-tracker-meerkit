@@ -1,6 +1,6 @@
 import csv
 import json
-import os
+import pprint
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -8,22 +8,6 @@ from urllib.parse import urlparse
 
 import requests
 import tqdm
-from dotenv import load_dotenv
-
-load_dotenv()
-_csrf_token = os.environ["CSRF_TOKEN"]
-_session_id = os.environ["SESSION_ID"]
-_user_id = os.environ["USER_ID"]
-headers = {
-    "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-    "x-csrftoken": _csrf_token,
-    "x-ig-app-id": "936619743392459",
-}
-
-cookies = {
-    "csrftoken": _csrf_token,
-    "sessionid": _session_id,
-}
 
 url = "https://www.instagram.com/graphql/query"
 _topsearch_url = "https://www.instagram.com/web/search/topsearch/"
@@ -31,11 +15,30 @@ _follow_doc_id = "9740159112729312"
 _follow_lsd = "vfndR6YI1o9Mb1SorLFoGO"
 
 
-profile_query_data_path = Path("profile_query")
-profile_query_data_path.mkdir(exist_ok=True)
+@dataclass(frozen=True)
+class InstagramProfile:
+    """Holds the credential context for one Instagram account/session."""
 
-# username = "perspectives.with.andrea"
-# username = "akshay_saraf_7712"
+    csrf_token: str
+    session_id: str
+    user_id: str
+
+
+def _headers(profile: InstagramProfile) -> dict[str, str]:
+    """Build request headers for a profile-scoped Instagram request."""
+    return {
+        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+        "x-csrftoken": profile.csrf_token,
+        "x-ig-app-id": "936619743392459",
+    }
+
+
+def _cookies(profile: InstagramProfile) -> dict[str, str]:
+    """Build request cookies for a profile-scoped Instagram request."""
+    return {
+        "csrftoken": profile.csrf_token,
+        "sessionid": profile.session_id,
+    }
 
 
 profile_query_data_path = Path("profile_query")
@@ -96,7 +99,7 @@ def _extract_username_from_profile_link(instagram_profile_link: str) -> str:
     return username
 
 
-def _resolve_user_pk(username: str) -> str | None:
+def _resolve_user_pk(username: str, profile: InstagramProfile) -> str | None:
     """Resolve Instagram user pk either from saved profile data or topsearch endpoint."""
     user_pk = load_user_pk_from_saved_data(username)
     if isinstance(user_pk, str) and user_pk:
@@ -104,7 +107,10 @@ def _resolve_user_pk(username: str) -> str | None:
 
     params = {"query": username}
     response = requests.get(
-        _topsearch_url, headers=headers, cookies=cookies, params=params
+        _topsearch_url,
+        headers=_headers(profile),
+        cookies=_cookies(profile),
+        params=params,
     )
     if not response.ok:
         return None
@@ -122,7 +128,11 @@ def _resolve_user_pk(username: str) -> str | None:
 already_unfollowed_users = load_unfollowed_users()
 
 
-def unfollow_user(username: str, retry_count: int = 3):
+def unfollow_user(
+    username: str,
+    profile: InstagramProfile,
+    retry_count: int = 3,
+):
     if retry_count < 3:
         print(f"Retrying unfollow for {username}, attempts left: {retry_count}")
 
@@ -145,7 +155,12 @@ def unfollow_user(username: str, retry_count: int = 3):
         "doc_id": "9846833695423773",
     }
 
-    response = requests.post(url, headers=headers, cookies=cookies, data=data)
+    response = requests.post(
+        url,
+        headers=_headers(profile),
+        cookies=_cookies(profile),
+        data=data,
+    )
     print(response.status_code)
     print(response.json())
 
@@ -159,7 +174,11 @@ def unfollow_user(username: str, retry_count: int = 3):
         return -1
 
 
-def follow_user(instagram_profile_link: str, retry_count: int = 3) -> int:
+def follow_user(
+    instagram_profile_link: str,
+    profile: InstagramProfile,
+    retry_count: int = 3,
+) -> int:
     """Follow an Instagram user by profile link using GraphQL mutation."""
     if retry_count < 3:
         print(
@@ -167,8 +186,9 @@ def follow_user(instagram_profile_link: str, retry_count: int = 3) -> int:
             f"{instagram_profile_link}, attempts left: {retry_count}"
         )
 
+    # user_id = _resolve_user_pk(username, profile)
     username = _extract_username_from_profile_link(instagram_profile_link)
-    user_id = _resolve_user_pk(username)
+    user_id = profile.user_id
 
     if not isinstance(user_id, str) or not user_id:
         print(
@@ -186,7 +206,7 @@ def follow_user(instagram_profile_link: str, retry_count: int = 3) -> int:
     }
 
     follow_headers = {
-        **headers,
+        **_headers(profile),
         "content-type": "application/x-www-form-urlencoded",
         "origin": "https://www.instagram.com",
         "referer": f"https://www.instagram.com/{username}/",
@@ -203,7 +223,12 @@ def follow_user(instagram_profile_link: str, retry_count: int = 3) -> int:
         "doc_id": _follow_doc_id,
     }
 
-    response = requests.post(url, headers=follow_headers, cookies=cookies, data=payload)
+    response = requests.post(
+        url,
+        headers=follow_headers,
+        cookies=_cookies(profile),
+        data=payload,
+    )
 
     print(response.status_code)
     try:
@@ -222,31 +247,36 @@ def follow_user(instagram_profile_link: str, retry_count: int = 3) -> int:
 
 
 def get_user_data(
-    username: str, unfollow_signal_followers_threshold: int = 10000
+    profile: InstagramProfile,
+    unfollow_signal_followers_threshold: int = 10000,
 ) -> dict[str, str | int | bool]:
-    user_id_query_url = (
-        f"https://www.instagram.com/web/search/topsearch/?query={username}"
-    )
-    resp = requests.get(user_id_query_url, headers=headers, cookies=cookies)
-    if not resp.ok:
-        # write response error to a file
-        with open(
-            profile_query_data_path / f"user_id_query_error_{username}.html", "w"
-        ) as f:
-            f.write(resp.text)
-        print("Fetching user pk:", resp.status_code)
-    resp.raise_for_status()
+    # user_id_query_url = (
+    #     f"https://www.instagram.com/web/search/topsearch/?query={username}"
+    # )
+    # resp = requests.get(
+    #     user_id_query_url,
+    #     headers=_headers(profile),
+    #     cookies=_cookies(profile),
+    # )
+    # if not resp.ok:
+    #     # write response error to a file
+    #     with open(
+    #         profile_query_data_path / f"user_id_query_error_{username}.html", "w"
+    #     ) as f:
+    #         f.write(resp.text)
+    #     print("Fetching user pk:", resp.status_code)
+    # resp.raise_for_status()
     # print(resp.json())
-    try:
-        user_id = resp.json()["users"][0]["user"]["pk"]
-    except IndexError:
-        return {"error": "User not found"}
+    # try:
+    #     user_id = resp.json()["users"][0]["user"]["pk"]
+    # except IndexError:
+    #     return {"error": "User not found"}
 
-    print(f"{user_id=}")
+    print(f"{profile.user_id=}")
 
     variables = {
         "enable_integrity_filters": True,
-        "id": user_id,
+        "id": profile.user_id,
         "render_surface": "PROFILE",
         "__relay_internal__pv__PolarisProjectCannesEnabledrelayprovider": True,
         "__relay_internal__pv__PolarisProjectCannesLoggedInEnabledrelayprovider": True,
@@ -259,22 +289,29 @@ def get_user_data(
         "doc_id": "31574646175516262",  # which graphql query to use
     }
 
-    response = requests.post(url, headers=headers, cookies=cookies, data=data)
+    response = requests.post(
+        url,
+        headers=_headers(profile),
+        cookies=_cookies(profile),
+        data=data,
+    )
     if not response.ok:
         # write response error to a file
         with open(
-            profile_query_data_path / f"profile_query_error_{username}.html", "w"
+            profile_query_data_path / f"profile_query_error_{profile.user_id}.html", "w"
         ) as f:
             f.write(response.text)
         print("Fetching user profile data:", response.status_code)
     response.raise_for_status()
 
     profile_query_data = response.json()["data"]
-    friendship_status = profile_query_data["user"]["friendship_status"]
+    pprint.pprint(profile_query_data)
+    friendship_status = profile_query_data["user"]["friendship_status"] or {}
     # extract important fields
-    me_following_account = friendship_status["following"]
-    being_followed_by_account = friendship_status["followed_by"]
+    me_following_account = friendship_status.get("following", False)
+    being_followed_by_account = friendship_status.get("followed_by", False)
     account_followers_count = profile_query_data["user"]["follower_count"]
+    username = profile_query_data["user"]["username"]
 
     # save json a file
     with open(profile_query_data_path / f"profile_query_{username}.json", "w") as f:
@@ -329,18 +366,22 @@ class FollowerUserRecord:
 
 
 def get_current_followers(
+    profile: InstagramProfile,
     store_data: bool = True,
     _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
 ) -> list[FollowerUserRecord]:
     """Get the set of current followers"""
 
-    followers_count = 99
+    __user_data = get_user_data(profile)
+    print("Fetched user data for followers retrieval:", __user_data)
+    followers_count = __user_data.get("account_followers_count")
+    assert isinstance(followers_count, int), "Invalid followers count in user data"
     _max_fetch_count = 24
     follower_user_data_list: list[FollowerUserRecord] = []
 
     with requests.Session() as session:
-        session.headers.update(headers)
-        session.cookies.update(cookies)
+        session.headers.update(_headers(profile))
+        session.cookies.update(_cookies(profile))
 
         _query_params: dict[str, int | str] = {
             "search_surface": "followers_list_page",
@@ -355,7 +396,7 @@ def get_current_followers(
         )
         _max_id = None
         while followers_count > 0:
-            url = f"https://www.instagram.com/api/v1/friendships/{_user_id}/followers"
+            url = f"https://www.instagram.com/api/v1/friendships/{profile.user_id}/followers"
             if _max_id:
                 _query_params = _query_params | {"max_id": _max_id}
             try:
@@ -393,8 +434,6 @@ def get_current_followers(
 
 
 if __name__ == "__main__":
-    # test follow user
-    # _user_profile = "https://www.instagram.com/tusharsainn"
-    # follow_result = follow_user(_user_profile)
-    # print(f"Follow result: {follow_result}")
-    get_current_followers()
+    raise RuntimeError(
+        "Instantiate InstagramProfile and call functions with explicit credentials."
+    )

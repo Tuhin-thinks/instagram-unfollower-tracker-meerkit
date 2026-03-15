@@ -68,15 +68,9 @@ def store_report(report: dict[str, set[ii.FollowerUserRecord]]) -> None:
 
 
 def main():
-    backup_file = create_backup()
-    followers = ii.get_current_followers(store_data=True, _store_fn=store_followers)
-
-    if backup_file:
-        old_followers = read_followers_from_file(backup_file)
-        comparison_result = compare_followers(old_followers, followers)
-
-        print(f"New followers: {len(comparison_result['new_followers'])}")
-        print(f"Unfollowers: {len(comparison_result['unfollowers'])}")
+    raise RuntimeError(
+        "Use run_scan_for_api with explicit credentials, or pass InstagramProfile explicitly."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +89,12 @@ def _load_latest_snapshot(data_dir: Path) -> list[ii.FollowerUserRecord] | None:
     return read_followers_from_file(snapshots[-1])
 
 
-def run_scan_for_api(data_dir: Path) -> dict:
+def run_scan_for_api(
+    data_dir: Path,
+    csrf_token: str,
+    session_id: str,
+    target_user_id: str,
+) -> dict:
     """
     Fetch current followers, persist a timestamped snapshot, compute a diff
     against the previous snapshot, and return scan metadata.
@@ -114,7 +113,12 @@ def run_scan_for_api(data_dir: Path) -> dict:
     prev_followers = _load_latest_snapshot(data_dir)
 
     # Fetch current followers without writing the legacy followers_data.txt
-    followers = ii.get_current_followers(store_data=False)
+    profile = ii.InstagramProfile(
+        csrf_token=csrf_token,
+        session_id=session_id,
+        user_id=target_user_id,
+    )
+    followers = ii.get_current_followers(profile=profile, store_data=False)
 
     # Persist new snapshot (same format as followers_data.txt for read_followers_from_file compat)
     snapshot_path = scans_dir / f"{scan_id}.jsonl"
