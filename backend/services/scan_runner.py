@@ -1,34 +1,66 @@
 import threading
+import traceback
 from datetime import datetime
 from pathlib import Path
 
-import get_current_followers as gcf
-from backend.config import DATA_DIR
+from backend import scan_worker
 
-_scan_lock = threading.Lock()
-_scan_state: dict = {
-    "status": "idle",  # idle | running | error
-    "started_at": None,
-    "last_scan_id": None,
-    "last_scan_at": None,
-    "error": None,
-}
+_locks: dict[str, threading.Lock] = {}
+_states: dict[str, dict] = {}
 
 
-def get_status() -> dict:
-    return dict(_scan_state)
+def _scope_key(app_user_id: str, profile_id: str) -> str:
+    """Build a stable lock/state key for one user's profile scans."""
+    return f"{app_user_id}:{profile_id}"
 
 
-def start_scan() -> bool:
-    """
-    Start a scan in a background thread.
-    Returns True if the scan was started, False if one is already in progress.
-    """
-    acquired = _scan_lock.acquire(blocking=False)
+def _ensure_state(key: str) -> dict:
+    if key not in _states:
+        _states[key] = {
+            "status": "idle",  # idle | running | error
+            "started_at": None,
+            "last_scan_id": None,
+            "last_scan_at": None,
+            "error": None,
+        }
+    if key not in _locks:
+        _locks[key] = threading.Lock()
+    return _states[key]
+
+
+def get_status(app_user_id: str, profile_id: str) -> dict:
+    """Return scan status for one user/profile scope."""
+    key = _scope_key(app_user_id, profile_id)
+    return dict(_ensure_state(key))
+
+
+def _run_worker(data_dir: Path, credentials: dict, target_user_id: str) -> dict:
+    """Run scan directly via Python function using explicit credentials."""
+    return scan_worker.run_scoped_scan(
+        data_dir=data_dir,
+        csrf_token=credentials["csrf_token"],
+        session_id=credentials["session_id"],
+        target_user_id=target_user_id,
+    )
+
+
+def start_scan(
+    app_user_id: str,
+    profile_id: str,
+    data_dir: Path,
+    credentials: dict,
+    target_user_id: str,
+) -> bool:
+    """Start a background scan for one user/profile, returning False if already running."""
+    key = _scope_key(app_user_id, profile_id)
+    state = _ensure_state(key)
+    lock = _locks[key]
+
+    acquired = lock.acquire(blocking=False)
     if not acquired:
         return False
 
-    _scan_state.update(
+    state.update(
         {
             "status": "running",
             "started_at": datetime.now().isoformat(),
@@ -38,8 +70,8 @@ def start_scan() -> bool:
 
     def _run() -> None:
         try:
-            result = gcf.run_scan_for_api(DATA_DIR)
-            _scan_state.update(
+            result = _run_worker(data_dir, credentials, target_user_id)
+            state.update(
                 {
                     "status": "idle",
                     "last_scan_id": result["scan_id"],
@@ -47,9 +79,11 @@ def start_scan() -> bool:
                 }
             )
         except Exception as exc:
-            _scan_state.update({"status": "error", "error": str(exc)})
+            _detailed_error = traceback.format_exc()
+            print(f"Scan worker error for {key}: {_detailed_error}")
+            state.update({"status": "error", "error": str(exc)})
         finally:
-            _scan_lock.release()
+            lock.release()
 
     threading.Thread(target=_run, daemon=True).start()
     return True

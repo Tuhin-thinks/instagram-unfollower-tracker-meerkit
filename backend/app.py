@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from flask_cors import CORS
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    app.config["SECRET_KEY"] = os.environ.get("APP_SECRET_KEY", "dev-secret-change-me")
 
     # Allow Vite dev server (5173) and preview server (4173) in development
     CORS(
@@ -20,10 +22,12 @@ def create_app() -> Flask:
         },
     )
 
+    from backend.routes.auth import bp as auth_bp
     from backend.routes.history import bp as history_bp
     from backend.routes.images import bp as images_bp
     from backend.routes.scan import bp as scan_bp
 
+    app.register_blueprint(auth_bp)
     app.register_blueprint(scan_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(images_bp)

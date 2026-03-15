@@ -8,23 +8,28 @@ from backend.config import IMAGE_CACHE_DIR
 _memory_cache: dict[str, str] = {}
 
 
-def get_cached_image_path(pk_id: str) -> Path | None:
+def get_cached_image_path(pk_id: str, cache_dir: Path = IMAGE_CACHE_DIR) -> Path | None:
     """Return the cached image Path if it exists on disk, else None."""
-    if pk_id in _memory_cache:
-        p = Path(_memory_cache[pk_id])
+    cache_key = f"{cache_dir}:{pk_id}"
+    if cache_key in _memory_cache:
+        p = Path(_memory_cache[cache_key])
         return p if p.exists() else None
-    path = IMAGE_CACHE_DIR / f"{pk_id}.jpg"
+    path = cache_dir / f"{pk_id}.jpg"
     if path.exists():
-        _memory_cache[pk_id] = str(path)
+        _memory_cache[cache_key] = str(path)
         return path
     return None
 
 
-def fetch_and_cache(pk_id: str, url: str) -> Path | None:
+def fetch_and_cache(
+    pk_id: str, url: str, cache_dir: Path = IMAGE_CACHE_DIR
+) -> Path | None:
     """Download and cache a trusted profile image URL under the follower pk_id."""
-    path = IMAGE_CACHE_DIR / f"{pk_id}.jpg"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_key = f"{cache_dir}:{pk_id}"
+    path = cache_dir / f"{pk_id}.jpg"
     if path.exists():
-        _memory_cache[pk_id] = str(path)
+        _memory_cache[cache_key] = str(path)
         return path
     try:
         resp = _requests.get(url, timeout=10, stream=True)
@@ -35,7 +40,7 @@ def fetch_and_cache(pk_id: str, url: str) -> Path | None:
         with open(path, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 f.write(chunk)
-        _memory_cache[pk_id] = str(path)
+        _memory_cache[cache_key] = str(path)
         return path
     except Exception:
         return None
