@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import requests as _requests
 
@@ -9,7 +8,7 @@ from backend.config import IMAGE_CACHE_DIR
 _memory_cache: dict[str, str] = {}
 
 
-def get_cached_image_path(pk_id: str) -> Optional[Path]:
+def get_cached_image_path(pk_id: str) -> Path | None:
     """Return the cached image Path if it exists on disk, else None."""
     if pk_id in _memory_cache:
         p = Path(_memory_cache[pk_id])
@@ -21,12 +20,8 @@ def get_cached_image_path(pk_id: str) -> Optional[Path]:
     return None
 
 
-def fetch_and_cache(pk_id: str, url: str) -> Optional[Path]:
-    """
-    Download the image at *url* and cache it locally under *pk_id*.jpg.
-    Returns the local Path on success, None on any failure.
-    Only accepts URLs that come from our own persisted scan data (not from clients).
-    """
+def fetch_and_cache(pk_id: str, url: str) -> Path | None:
+    """Download and cache a trusted profile image URL under the follower pk_id."""
     path = IMAGE_CACHE_DIR / f"{pk_id}.jpg"
     if path.exists():
         _memory_cache[pk_id] = str(path)
