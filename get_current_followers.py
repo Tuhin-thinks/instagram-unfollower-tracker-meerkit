@@ -5,15 +5,6 @@ from pathlib import Path
 import insta_interface as ii
 
 
-def store_followers(followers: list[ii.FollowerUserRecord]) -> None:
-    with open("followers_data.txt", "w") as f:
-        # first line as the current timestamp
-        f.write(f"Timestamp: {datetime.now()}\n")
-
-        for follower in followers:
-            f.write(f"{follower}\n")
-
-
 def compare_followers(
     old_followers: list[ii.FollowerUserRecord],
     new_followers: list[ii.FollowerUserRecord],
@@ -38,19 +29,6 @@ def read_followers_from_file(filename: str | Path) -> list[ii.FollowerUserRecord
     return followers
 
 
-def create_backup():
-    _existing_file = Path("followers_data.txt")
-    if _existing_file.exists():
-        _current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_filename = Path(f"followers_data_backup_{_current_time}.txt")
-        _existing_file.rename(backup_filename)
-        print(f"Existing followers data backed up to {backup_filename}")
-
-        return backup_filename
-
-    return None
-
-
 def store_report(report: dict[str, set[ii.FollowerUserRecord]]) -> None:
     _current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
     with open(f"scan_report_{_current_time}.txt", "w") as f:
@@ -73,6 +51,17 @@ def main():
     )
 
 
+def add_to_downloader_queue(
+    app_user_id: str, profile: list[ii.FollowerUserRecord]
+) -> None:
+    """Add a follower's profile image URL to the downloader queue for async caching."""
+    from backend.services.downloader import enqueue_image_download
+
+    print(f"Enqueuing image download for {len(profile)} followers...")
+    for follower in profile:
+        enqueue_image_download(app_user_id, follower.pk_id, follower.profile_pic_url)
+
+
 # ---------------------------------------------------------------------------
 # API-facing helpers (used by the Flask backend; do not call from CLI main())
 # ---------------------------------------------------------------------------
@@ -90,6 +79,7 @@ def _load_latest_snapshot(data_dir: Path) -> list[ii.FollowerUserRecord] | None:
 
 
 def run_scan_for_api(
+    app_user_id: str,
     data_dir: Path,
     csrf_token: str,
     session_id: str,
@@ -128,9 +118,12 @@ def run_scan_for_api(
         for follower in followers:
             f.write(f"{follower}\n")
 
+    add_to_downloader_queue(app_user_id, followers)
+
     # Compute and persist diff
     diff_id: str | None = None
     if prev_followers is not None:
+        add_to_downloader_queue(app_user_id, prev_followers)
         diff = compare_followers(prev_followers, followers)
         diff_id = f"diff_{now.strftime('%Y%m%d_%H%M%S')}"
         diff_path = diffs_dir / f"{diff_id}.json"

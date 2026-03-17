@@ -26,6 +26,11 @@ def create_app() -> Flask:
     from backend.routes.history import bp as history_bp
     from backend.routes.images import bp as images_bp
     from backend.routes.scan import bp as scan_bp
+    from backend.workers import download_worker
+
+    # # in debug mode, flask runs 2 processes. We only want to start the download worker in one of them to avoid duplicate workers.
+    # if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+    #     download_worker.start_download_worker()
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(scan_bp)

@@ -50,9 +50,12 @@ def get_status(app_user_id: str, profile_id: str, data_dir: Path | None = None) 
     return dict(state)
 
 
-def _run_worker(data_dir: Path, credentials: dict, target_user_id: str) -> dict:
+def _run_worker(
+    app_user_id: str, data_dir: Path, credentials: dict, target_user_id: str
+) -> dict:
     """Run scan directly via Python function using explicit credentials."""
     return scan_worker.run_scoped_scan(
+        app_user_id=app_user_id,
         data_dir=data_dir,
         csrf_token=credentials["csrf_token"],
         session_id=credentials["session_id"],
@@ -86,7 +89,7 @@ def start_scan(
 
     def _run() -> None:
         try:
-            result = _run_worker(data_dir, credentials, target_user_id)
+            result = _run_worker(app_user_id, data_dir, credentials, target_user_id)
             state.update(
                 {
                     "status": "idle",

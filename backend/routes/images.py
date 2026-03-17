@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify, request, send_file, session
 
-from backend.config import profile_data_dir
+from backend.config import IMAGE_CACHE_DIR, profile_data_dir
 from backend.services import auth, image_cache, persistence
+from backend.services.downloader import enqueue_image_download
 
 bp = Blueprint("images", __name__, url_prefix="/api")
 
@@ -28,25 +29,33 @@ def get_image(pk_id: str):
     if not instagram_user:
         return jsonify({"error": "Instagram user not found"}), 404
 
-    data_dir = profile_data_dir(app_user_id, instagram_user_id)
-    cache_dir = data_dir / "image_cache"
+    # data_dir = profile_data_dir(app_user_id, instagram_user_id)
+    # cache_dir = data_dir / "image_cache"
 
     # Serve from disk cache if available
-    cached = image_cache.get_cached_image_path(pk_id, cache_dir)
+    cached = image_cache.get_cached_image_path(pk_id)
     if cached:
         resp = send_file(cached, mimetype="image/jpeg")
         resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
         return resp
 
-    # Look up the original URL from our own stored scan data (not from client input)
-    url = persistence.get_profile_pic_url(data_dir, pk_id)
-    if not url:
-        return jsonify({"error": "User not found in latest scan"}), 404
+    else:
+        enqueue_image_download(app_user_id, pk_id, instagram_user["profile_pic_url"])
+        resp = send_file(
+            IMAGE_CACHE_DIR / "no-img-available.jpeg", mimetype="image/jpeg"
+        )
+        resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
+        return resp
 
-    cached = image_cache.fetch_and_cache(pk_id, url, cache_dir)
-    if not cached:
-        return jsonify({"error": "Could not fetch image"}), 502
+    # # Look up the original URL from our own stored scan data (not from client input)
+    # url = persistence.get_profile_pic_url(data_dir, pk_id)
+    # if not url:
+    #     return jsonify({"error": "User not found in latest scan"}), 404
 
-    resp = send_file(cached, mimetype="image/jpeg")
-    resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
-    return resp
+    # cached = image_cache.fetch_and_cache(pk_id, url, cache_dir)
+    # if not cached:
+    #     return jsonify({"error": "Could not fetch image"}), 502
+
+    # resp = send_file(cached, mimetype="image/jpeg")
+    # resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
+    # return resp

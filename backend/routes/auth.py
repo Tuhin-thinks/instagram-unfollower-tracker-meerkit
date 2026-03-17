@@ -1,6 +1,8 @@
 from flask import Blueprint, jsonify, request, session
 
 from backend.services import auth
+from backend.services.db_service import init_worker_db
+from backend.workers.download_worker import start_download_worker
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -45,6 +47,12 @@ def login():
     session["app_user_id"] = user["app_user_id"]
     session["app_user_name"] = user["name"]
 
+    start_download_worker(user["app_user_id"])
+
+    session["download_worker_started"] = True
+
+    init_worker_db(user["app_user_id"])
+
     return jsonify(auth.build_me_payload(user["app_user_id"], user["name"]))
 
 
@@ -66,6 +74,10 @@ def me():
         return jsonify(None)
 
     app_user_id, app_user_name = current
+    if not session.get("download_worker_started"):
+        start_download_worker(app_user_id)
+        session["download_worker_started"] = True
+
     return jsonify(auth.build_me_payload(app_user_id, app_user_name))
 
 
