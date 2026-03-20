@@ -9,7 +9,7 @@ A modern web application for tracking Instagram follower changes. Monitor new fo
 
 ## Features
 
-- 🔍 **Real-time follower scanning** – Fetch current Instagram follower list via sessionid/csrf token
+- 🔍 **Real-time follower scanning** – Fetch current Instagram follower list using Instagram session credentials stored per account
 - 📊 **Diff tracking** – Automatically compute new followers and unfollowers between scans
 - 🖼️ **Image caching** – Cache profile pictures locally and serve through the API
 - 💾 **Persistent storage** – SQLite database with scan history and metadata
@@ -47,16 +47,15 @@ cd ..
 
 ### Configuration
 
-Create a `.env` file in the root with your Instagram credentials:
+No `.env` file is required.
 
-```env
-CSRF_TOKEN=your_csrf_token_here
-SESSION_ID=your_sessionid_here
-USER_ID=your_numeric_user_id
-APP_SECRET_KEY=your_app_secret_key_here
+If you want to override Flask's default development secret, export `APP_SECRET_KEY` in the shell before starting the backend:
+
+```bash
+export APP_SECRET_KEY=your_app_secret_key_here
 ```
 
-See `.env.example` for details.
+Instagram credentials are managed inside the application. After you register and log in, add an Instagram account through the UI or the `/api/auth/instagram-users` endpoint.
 
 ### Running the App
 
@@ -139,7 +138,15 @@ insta-followers-tracker/
 | `GET`  | `/api/image/<pk_id>` | Get cached profile picture           |
 | `POST` | `/api/auth/register` | Register new app user                |
 | `POST` | `/api/auth/login`    | Log in app user                      |
+| `POST` | `/api/auth/logout`   | Log out current app user             |
 | `GET`  | `/api/auth/me`       | Get current user context             |
+| `GET`  | `/api/auth/instagram-users` | List Instagram accounts for current user |
+| `POST` | `/api/auth/instagram-users` | Add a new Instagram account    |
+| `GET`  | `/api/auth/instagram-users/<instagram_user_id>` | Get Instagram account details |
+| `PATCH` | `/api/auth/instagram-users/<instagram_user_id>` | Update Instagram account credentials |
+| `POST` | `/api/auth/instagram-users/<instagram_user_id>/select` | Set active Instagram account |
+| `DELETE` | `/api/auth/instagram-users/<instagram_user_id>` | Remove an Instagram account |
+| `DELETE` | `/api/auth/instagram-users` | Remove all Instagram accounts |
 
 See [API Reference](docs/api-reference.md) for detailed documentation.
 
