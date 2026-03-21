@@ -342,7 +342,7 @@ wheels = [
 ]
 
 [[package]]
-name = "insta-followers-tracker"
+name = "meerkit"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

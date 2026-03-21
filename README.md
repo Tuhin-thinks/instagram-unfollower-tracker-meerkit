@@ -1,4 +1,4 @@
-# insta-followers-tracker
+# Meerkit
 
 A modern web application for tracking Instagram follower changes. Monitor new followers, unfollowers, and access cached profile pictures with a responsive Vue 3 frontend backed by a Flask REST API.
 
@@ -30,7 +30,7 @@ A modern web application for tracking Instagram follower changes. Monitor new fo
 ```bash
 # Clone and navigate to repo
 git clone <repo-url>
-cd insta-followers-tracker
+cd meerkit
 
 # Create Python virtual environment
 python3 -m venv .venv
@@ -83,7 +83,7 @@ The dashboard displays real-time follower scan results, showing new followers, u
 
 ## Documentation
 
-Full documentation is available on the [project docs site](https://insta-followers-tracker.readthedocs.io/) or in the [docs/](docs/) directory:
+Full documentation is available in the [docs/](docs/) directory and on GitHub: [Tuhin-thinks/meerkit](https://github.com/Tuhin-thinks/meerkit).
 
 - [Architecture Overview](docs/architecture.md) – System design and data flow
 - [Backend API](docs/backend.md) – Flask routes and service layer
@@ -105,7 +105,7 @@ Then navigate to [http://localhost:8000](http://localhost:8000).
 ## Project Structure
 
 ```
-insta-followers-tracker/
+meerkit/
 ├── backend/                  # Flask application
 │   ├── app.py               # Application factory
 │   ├── config.py            # Configuration
@@ -226,6 +226,6 @@ MIT License – see LICENSE file for details
 
 For issues and questions:
 
-- Open a [GitHub Issue](https://github.com/your-repo/issues)
+- Open a [GitHub Issue](https://github.com/Tuhin-thinks/meerkit/issues)
 - Check [Troubleshooting](docs/development.md#troubleshooting) section in docs
 - Review [API Reference](docs/api-reference.md) for endpoint details
