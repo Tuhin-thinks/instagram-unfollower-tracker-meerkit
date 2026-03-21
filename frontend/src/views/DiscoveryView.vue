@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ProfilePicture from "../components/ProfilePicture.vue";
 import PredictionStatePanel from "../components/prediction/PredictionStatePanel.vue";
 import PredictionStatusBadge from "../components/prediction/PredictionStatusBadge.vue";
 import ProbabilityChip from "../components/prediction/ProbabilityChip.vue";
@@ -80,6 +81,14 @@ const targetProfile = computed(() => {
         target_profile?: Record<string, unknown>;
     } | null;
     return payload?.target_profile ?? null;
+});
+
+const instagramProfileUrl = computed(() => {
+    const username = prediction.value?.target_username?.trim();
+    if (!username) {
+        return "";
+    }
+    return `https://www.instagram.com/${username}`;
 });
 
 async function pollTask(taskId: string, predictionId: string) {
@@ -340,13 +349,34 @@ async function markFeedback(status: "correct" | "wrong") {
             class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4"
         >
             <div class="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-gray-500">
-                        Target
-                    </p>
-                    <p class="text-lg font-bold text-gray-900">
-                        @{{ prediction.target_username || "unknown" }}
-                    </p>
+                <div class="flex items-center gap-3 min-w-0">
+                    <ProfilePicture
+                        v-if="prediction.target_profile_id"
+                        :pk-id="prediction.target_profile_id"
+                        :profile-id="props.profileId"
+                        :alt="prediction.target_username || 'target profile'"
+                        class="w-14 h-14"
+                    />
+                    <div class="min-w-0">
+                        <p class="text-xs uppercase tracking-wide text-gray-500">
+                            Target
+                        </p>
+                        <a
+                            v-if="instagramProfileUrl"
+                            :href="instagramProfileUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="text-lg font-bold text-indigo-700 hover:text-indigo-900 hover:underline truncate inline-block max-w-full"
+                        >
+                            @{{ prediction.target_username || "unknown" }} ↗
+                        </a>
+                        <p v-else class="text-lg font-bold text-gray-900">
+                            @{{ prediction.target_username || "unknown" }}
+                        </p>
+                        <p class="text-[10px] text-gray-400 mt-0.5">
+                            user id: {{ prediction.target_profile_id || "--" }}
+                        </p>
+                    </div>
                 </div>
                 <div class="text-right">
                     <p class="text-xs uppercase tracking-wide text-gray-500">
