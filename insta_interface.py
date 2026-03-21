@@ -374,7 +374,6 @@ def get_current_followers_v2(
     _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
 ):
     """V2 of get_current_followers with different approach"""
-    _max_fetch_count = 24
     follower_user_data_list: list[FollowerUserRecord] = []
 
     with requests.Session() as session:
@@ -427,6 +426,67 @@ def get_current_followers_v2(
         _store_fn(follower_user_data_list)
     print(f"Total followers fetched: {len(follower_user_data_list)}")
     return follower_user_data_list
+
+
+def get_current_following_v2(
+    profile: InstagramProfile,
+    store_data: bool = True,
+    _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+):
+    """V2 of get_current_following with different approach"""
+    following_user_data_list: list[FollowerUserRecord] = []
+
+    with requests.Session() as session:
+        query_hash = "d04b0a864b4b54837c0d870b0e77e076"
+        session.headers.update(_headers(profile))
+        session.cookies.update(_cookies(profile))
+
+        _after = None
+
+        has_next = True
+
+        while has_next:
+            variables = {
+                "id": profile.user_id,
+                "include_reel": False,
+                "fetch_mutual": False,
+                "first": 50,
+                "after": _after,
+            }
+            _url = f"{url}?query_hash={query_hash}&variables={quote(json.dumps(variables))}"
+            response = session.get(_url)
+            if not response.ok:
+                print(
+                    f"Error fetching following users: {response.status_code} - {response.text}"
+                )
+                break
+
+            data = response.json()
+            edge = data["data"]["user"]["edge_follow"]
+
+            for item in edge["edges"]:
+                node = item["node"]
+                following_record = FollowerUserRecord(
+                    pk_id=node.get("id", ""),
+                    id=node.get("id", ""),
+                    fbid_v2=node.get("fbid_v2", None),
+                    profile_pic_id=node.get("profile_pic_id", None),
+                    profile_pic_url=node.get("profile_pic_url", None),
+                    username=node.get("username", None),
+                    full_name=node.get("full_name", None),
+                    is_private=node.get("is_private", False),
+                )
+                following_user_data_list.append(following_record)
+
+            _after = edge.get("page_info", {}).get("end_cursor")
+            has_next = edge.get("page_info", {}).get("has_next_page", False)
+            print(f"Fetched batch of following users, count: {len(edge['edges'])}")
+
+    if store_data and _store_fn:
+        _store_fn(following_user_data_list)
+    print(f"Total following users fetched: {len(following_user_data_list)}")
+    return following_user_data_list
+
 
 # NOTE: the above v2 approach is based on reverse engineering the Instagram web interface and faster than the v1 approach.
 # Both approaches work. But, I am currently using the v2 approach for fetching followers.
