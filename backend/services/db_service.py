@@ -672,6 +672,197 @@ def get_target_profile(
         return result
 
 
+def create_target_profile_list_cache_entry(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+    relationship_type: str,
+    cache_file_path: str,
+    fetched_at: str,
+    source_count_at_fetch: int | None,
+) -> dict:
+    cache_entry_id = f"cache_{uuid4().hex}"
+    current_time = _now_iso()
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO target_profile_list_cache_entries (
+                cache_entry_id,
+                app_user_id,
+                reference_profile_id,
+                target_profile_id,
+                relationship_type,
+                cache_file_path,
+                fetched_at,
+                source_count_at_fetch,
+                is_active,
+                invalidated_at,
+                invalidation_reason,
+                create_date,
+                update_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                cache_entry_id,
+                app_user_id,
+                reference_profile_id,
+                target_profile_id,
+                relationship_type,
+                cache_file_path,
+                fetched_at,
+                source_count_at_fetch,
+                1,
+                None,
+                None,
+                current_time,
+                current_time,
+            ),
+        )
+        conn.commit()
+    return (
+        get_active_target_profile_list_cache_entry(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+            relationship_type=relationship_type,
+        )
+        or {}
+    )
+
+
+def get_active_target_profile_list_cache_entry(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+    relationship_type: str,
+) -> dict | None:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT *
+            FROM target_profile_list_cache_entries
+            WHERE app_user_id = ?
+              AND reference_profile_id = ?
+              AND target_profile_id = ?
+              AND relationship_type = ?
+              AND is_active = 1
+            ORDER BY fetched_at DESC
+            LIMIT 1
+            """,
+            (app_user_id, reference_profile_id, target_profile_id, relationship_type),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        result["is_active"] = bool(result.get("is_active"))
+        return result
+
+
+def invalidate_target_profile_list_cache_entry(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+    relationship_type: str,
+    reason: str,
+    invalidated_at: str | None = None,
+) -> int:
+    invalidated_at = invalidated_at or _now_iso()
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE target_profile_list_cache_entries
+            SET is_active = 0,
+                invalidated_at = ?,
+                invalidation_reason = ?,
+                update_date = ?
+            WHERE app_user_id = ?
+              AND reference_profile_id = ?
+              AND target_profile_id = ?
+              AND relationship_type = ?
+              AND is_active = 1
+            """,
+            (
+                invalidated_at,
+                reason,
+                _now_iso(),
+                app_user_id,
+                reference_profile_id,
+                target_profile_id,
+                relationship_type,
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount or 0
+
+
+def get_target_profile_relationship_cache_summary(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+) -> dict[str, dict[str, object]]:
+    target_profile = (
+        get_target_profile(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+        )
+        or {}
+    )
+    now = datetime.now()
+    result: dict[str, dict[str, object]] = {}
+
+    for relationship_type in ("followers", "following"):
+        active_entry = get_active_target_profile_list_cache_entry(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+            relationship_type=relationship_type,
+        )
+        fetched_at = active_entry.get("fetched_at") if active_entry else None
+        days_since_fetch: int | None = None
+        if isinstance(fetched_at, str):
+            try:
+                days_since_fetch = max(
+                    0, (now - datetime.fromisoformat(fetched_at)).days
+                )
+            except ValueError:
+                days_since_fetch = None
+
+        current_count_key = (
+            "follower_count" if relationship_type == "followers" else "following_count"
+        )
+        current_count = target_profile.get(current_count_key)
+        source_count = (
+            active_entry.get("source_count_at_fetch") if active_entry else None
+        )
+        count_changed = (
+            isinstance(current_count, int)
+            and isinstance(source_count, int)
+            and current_count != source_count
+        )
+
+        result[relationship_type] = {
+            "relationship_type": relationship_type,
+            "fetched_at": fetched_at,
+            "days_since_fetch": days_since_fetch,
+            "is_outdated": bool(count_changed),
+            "active_file_present": bool(active_entry),
+            "active_cache_file_path": active_entry.get("cache_file_path")
+            if active_entry
+            else None,
+            "last_known_count": source_count,
+            "current_count": current_count,
+        }
+    return result
+
+
 def replace_target_profile_relationships(
     app_user_id: str,
     reference_profile_id: str,

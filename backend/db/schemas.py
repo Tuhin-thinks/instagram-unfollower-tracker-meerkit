@@ -107,6 +107,23 @@ CREATE TABLE IF NOT EXISTS target_profile_relationships (
     )
 );"""
 
+TARGET_PROFILE_LIST_CACHE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS target_profile_list_cache_entries (
+    cache_entry_id TEXT PRIMARY KEY,
+    app_user_id TEXT NOT NULL,
+    reference_profile_id TEXT NOT NULL,
+    target_profile_id TEXT NOT NULL,
+    relationship_type TEXT NOT NULL,
+    cache_file_path TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    source_count_at_fetch INTEGER,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    invalidated_at TEXT,
+    invalidation_reason TEXT,
+    create_date TEXT NOT NULL,
+    update_date TEXT NOT NULL
+);"""
+
 PREDICTIONS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS predictions (
     prediction_id TEXT PRIMARY KEY,
@@ -171,6 +188,16 @@ ON target_profile_relationships (
     relationship_type
 );"""
 
+TARGET_PROFILE_LIST_CACHE_ACTIVE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_target_profile_list_cache_active
+ON target_profile_list_cache_entries (
+    app_user_id,
+    reference_profile_id,
+    target_profile_id,
+    relationship_type,
+    is_active
+);"""
+
 PREDICTIONS_SCOPE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_predictions_scope
 ON predictions (app_user_id, reference_profile_id, target_profile_id, prediction_type, requested_at);
@@ -196,10 +223,12 @@ schema_collection = {
     "profile_audience_events": PROFILE_AUDIENCE_EVENTS_SCHEMA,
     "target_profiles": TARGET_PROFILES_SCHEMA,
     "target_profile_relationships": TARGET_PROFILE_RELATIONSHIPS_SCHEMA,
+    "target_profile_list_cache_entries": TARGET_PROFILE_LIST_CACHE_SCHEMA,
     "predictions": PREDICTIONS_SCHEMA,
     "prediction_tasks": PREDICTION_TASKS_SCHEMA,
     "prediction_assessments": PREDICTION_ASSESSMENTS_SCHEMA,
     "idx_target_profile_relationship_scope": TARGET_PROFILE_RELATIONSHIPS_INDEX,
+    "idx_target_profile_list_cache_active": TARGET_PROFILE_LIST_CACHE_ACTIVE_INDEX,
     "idx_predictions_scope": PREDICTIONS_SCOPE_INDEX,
     "idx_prediction_tasks_scope": PREDICTION_TASKS_SCOPE_INDEX,
     "idx_prediction_assessments_prediction": PREDICTION_ASSESSMENTS_PREDICTION_INDEX,

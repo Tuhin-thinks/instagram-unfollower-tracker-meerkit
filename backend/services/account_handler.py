@@ -1,12 +1,32 @@
 import math
+import re
+from dataclasses import asdict
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 import insta_interface as ii
-from backend.services import db_service
+from backend.services import db_service, relationship_cache
 
 _PREDICTION_TTL = timedelta(days=7)
 _CACHE_FRESHNESS = timedelta(hours=6)
 _HISTORICAL_REFERENCE_LIMIT = 400
+_RELATIONSHIP_TYPES = {"followers", "following"}
+_USER_ID_INPUT_PATTERN = re.compile(r"^\d+$")
+_USERNAME_INPUT_PATTERN = re.compile(r"^[A-Za-z0-9._]+$")
+_INSTAGRAM_PROFILE_HOSTS = {"instagram.com", "www.instagram.com", "m.instagram.com"}
+_NON_PROFILE_ROUTE_PREFIXES = {
+    "about",
+    "accounts",
+    "developer",
+    "direct",
+    "explore",
+    "graphql",
+    "p",
+    "reel",
+    "reels",
+    "stories",
+    "tv",
+}
 
 
 def _as_str(value: object) -> str | None:
@@ -67,6 +87,50 @@ def _build_profile(credentials: dict) -> ii.InstagramProfile:
     )
 
 
+def _extract_username_from_target_input(value: str) -> str | None:
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    if "instagram.com" not in normalized.lower():
+        return normalized.lstrip("@").strip() or None
+
+    candidate = normalized
+    if "://" not in candidate:
+        candidate = f"https://{candidate.lstrip('/')}"
+
+    parsed = urlparse(candidate)
+    if parsed.netloc and parsed.netloc.lower() not in _INSTAGRAM_PROFILE_HOSTS:
+        return None
+
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if not path_parts:
+        return None
+
+    username = path_parts[0].lstrip("@").strip()
+    if not username or username.lower() in _NON_PROFILE_ROUTE_PREFIXES:
+        return None
+    return username
+
+
+def _normalize_prediction_target_input(
+    username: str | None,
+    user_id: str | None,
+) -> tuple[str | None, str | None]:
+    normalized_user_id = (user_id or "").strip() or None
+    if normalized_user_id:
+        return None, normalized_user_id
+
+    extracted_username = _extract_username_from_target_input(username or "")
+    if not extracted_username:
+        return None, None
+    if _USER_ID_INPUT_PATTERN.fullmatch(extracted_username):
+        return None, extracted_username
+    if not _USERNAME_INPUT_PATTERN.fullmatch(extracted_username):
+        return None, None
+    return extracted_username, None
+
+
 def _is_fresh(timestamp: str | None, ttl: timedelta = _CACHE_FRESHNESS) -> bool:
     if not timestamp:
         return False
@@ -87,6 +151,94 @@ def _cache_ready(
     if target_profile.get("fetch_status") not in {"ready", "partial", "metadata_only"}:
         return False
     return _is_fresh(target_profile.get("metadata_fetched_at"))
+
+
+def _normalize_relationship_types(relationship_type: str | None) -> set[str]:
+    if relationship_type is None:
+        return set(_RELATIONSHIP_TYPES)
+    normalized = relationship_type.strip().lower()
+    if normalized not in _RELATIONSHIP_TYPES:
+        raise ValueError("relationship_type must be either 'followers' or 'following'")
+    return {normalized}
+
+
+def _count_for_relationship_type(
+    relationship_type: str,
+    follower_count: int | None,
+    following_count: int | None,
+) -> int | None:
+    return follower_count if relationship_type == "followers" else following_count
+
+
+def _invalidate_relationship_cache_entry(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+    relationship_type: str,
+    reason: str,
+    invalidated_at: str | None = None,
+) -> bool:
+    active_entry = db_service.get_active_target_profile_list_cache_entry(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=target_profile_id,
+        relationship_type=relationship_type,
+    )
+    if not active_entry:
+        return False
+
+    relationship_cache.delete_cache_file(active_entry.get("cache_file_path"))
+    db_service.invalidate_target_profile_list_cache_entry(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=target_profile_id,
+        relationship_type=relationship_type,
+        reason=reason,
+        invalidated_at=invalidated_at,
+    )
+    return True
+
+
+def _invalidate_changed_count_caches(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+    follower_count: int | None,
+    following_count: int | None,
+    invalidated_at: str | None = None,
+) -> set[str]:
+    changed_types: set[str] = set()
+    for relationship_type in _RELATIONSHIP_TYPES:
+        active_entry = db_service.get_active_target_profile_list_cache_entry(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+            relationship_type=relationship_type,
+        )
+        if not active_entry:
+            continue
+
+        source_count = active_entry.get("source_count_at_fetch")
+        current_count = _count_for_relationship_type(
+            relationship_type=relationship_type,
+            follower_count=follower_count,
+            following_count=following_count,
+        )
+        if (
+            isinstance(source_count, int)
+            and isinstance(current_count, int)
+            and source_count != current_count
+        ):
+            _invalidate_relationship_cache_entry(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                target_profile_id=target_profile_id,
+                relationship_type=relationship_type,
+                reason="count_changed",
+                invalidated_at=invalidated_at,
+            )
+            changed_types.add(relationship_type)
+    return changed_types
 
 
 def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
@@ -501,9 +653,11 @@ def request_followback_prediction(
     user_id: str | None = None,
     refresh: bool = False,
     force_background: bool = False,
+    relationship_type: str | None = None,
 ) -> dict:
+    username, user_id = _normalize_prediction_target_input(username, user_id)
     if not username and not user_id:
-        raise ValueError("username or user_id is required")
+        raise ValueError("username, profile link, or user_id is required")
 
     profile = _build_profile(instagram_user)
     target_profile_id = user_id or ii.resolve_target_user_pk(username or "", profile)
@@ -516,6 +670,11 @@ def request_followback_prediction(
     target_username = username or (cached_profile or {}).get("username")
     current_time = datetime.now().isoformat()
     expires_at = (datetime.now() + _PREDICTION_TTL).isoformat()
+    requested_relationship_type = None
+    if relationship_type is not None:
+        requested_relationship_type = next(
+            iter(_normalize_relationship_types(relationship_type))
+        )
 
     if (
         not refresh
@@ -593,6 +752,7 @@ def request_followback_prediction(
         target_profile_id=target_profile_id,
         instagram_user=instagram_user,
         refresh_requested=refresh or force_background,
+        relationship_type=requested_relationship_type,
     )
     prediction = (
         db_service.update_prediction(
@@ -605,7 +765,11 @@ def request_followback_prediction(
     return {"prediction": prediction, "task": task}
 
 
-def refresh_followback_prediction(prediction_id: str, instagram_user: dict) -> dict:
+def refresh_followback_prediction(
+    prediction_id: str,
+    instagram_user: dict,
+    relationship_type: str | None = None,
+) -> dict:
     prediction = db_service.get_prediction(prediction_id)
     if not prediction:
         raise ValueError("Prediction not found")
@@ -641,40 +805,90 @@ def refresh_followback_prediction(prediction_id: str, instagram_user: dict) -> d
     )
 
     relationships_time = datetime.now().isoformat()
+    requested_relationships = _normalize_relationship_types(relationship_type)
+    count_changed_relationships = _invalidate_changed_count_caches(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=target_profile_id,
+        follower_count=metadata_follower_count,
+        following_count=metadata_following_count,
+        invalidated_at=relationships_time,
+    )
+    relationships_to_refresh = requested_relationships | count_changed_relationships
+
     fetch_status = "ready"
     last_error: str | None = None
-    followers: list[ii.FollowerUserRecord] = []
-    following: list[ii.FollowerUserRecord] = []
-    try:
-        followers = ii.get_target_followers_v2(profile, target_profile_id)
-        db_service.replace_target_profile_relationships(
-            app_user_id=app_user_id,
-            reference_profile_id=reference_profile_id,
-            target_profile_id=target_profile_id,
-            relationship_type="followers",
-            profiles=followers,
-            fetched_at=relationships_time,
-        )
-    except Exception as exc:
+    fetch_map = {
+        "followers": ii.get_target_followers_v2,
+        "following": ii.get_target_following_v2,
+    }
+    for relationship in sorted(relationships_to_refresh):
+        try:
+            records = fetch_map[relationship](profile, target_profile_id)
+            db_service.replace_target_profile_relationships(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                target_profile_id=target_profile_id,
+                relationship_type=relationship,
+                profiles=records,
+                fetched_at=relationships_time,
+            )
+            _invalidate_relationship_cache_entry(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                target_profile_id=target_profile_id,
+                relationship_type=relationship,
+                reason="replaced_by_new_fetch",
+                invalidated_at=relationships_time,
+            )
+            cache_file_path = relationship_cache.write_relationship_cache_file(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                target_profile_id=target_profile_id,
+                relationship_type=relationship,
+                fetched_at=relationships_time,
+                profiles_payload=[asdict(item) for item in records],
+            )
+            db_service.create_target_profile_list_cache_entry(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                target_profile_id=target_profile_id,
+                relationship_type=relationship,
+                cache_file_path=cache_file_path,
+                fetched_at=relationships_time,
+                source_count_at_fetch=_count_for_relationship_type(
+                    relationship,
+                    metadata_follower_count,
+                    metadata_following_count,
+                ),
+            )
+        except Exception as exc:
+            fetch_status = "partial"
+            last_error = str(exc)
+
+    cache_summary = db_service.get_target_profile_relationship_cache_summary(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=target_profile_id,
+    )
+    active_list_count = sum(
+        1 for item in cache_summary.values() if bool(item.get("active_file_present"))
+    )
+    if active_list_count >= 2:
+        fetch_status = "ready" if last_error is None else "partial"
+    elif active_list_count == 1:
         fetch_status = "partial"
-        last_error = str(exc)
-
-    try:
-        following = ii.get_target_following_v2(profile, target_profile_id)
-        db_service.replace_target_profile_relationships(
-            app_user_id=app_user_id,
-            reference_profile_id=reference_profile_id,
-            target_profile_id=target_profile_id,
-            relationship_type="following",
-            profiles=following,
-            fetched_at=relationships_time,
-        )
-    except Exception as exc:
-        fetch_status = "partial" if fetch_status == "ready" else fetch_status
-        last_error = str(exc)
-
-    if not followers and not following:
+    else:
         fetch_status = "metadata_only"
+
+    latest_relationship_fetch = None
+    fetched_timestamps: list[str] = []
+    for item in cache_summary.values():
+        fetched_at = item.get("fetched_at")
+        if isinstance(fetched_at, str):
+            fetched_timestamps.append(fetched_at)
+    if fetched_timestamps:
+        latest_relationship_fetch = max(fetched_timestamps)
 
     db_service.upsert_target_profile(
         app_user_id=app_user_id,
@@ -692,7 +906,7 @@ def refresh_followback_prediction(prediction_id: str, instagram_user: dict) -> d
         ),
         fetch_status=fetch_status,
         metadata_fetched_at=metadata_time,
-        relationships_fetched_at=relationships_time,
+        relationships_fetched_at=latest_relationship_fetch,
         last_error=last_error,
     )
 
@@ -705,6 +919,7 @@ def refresh_followback_prediction(prediction_id: str, instagram_user: dict) -> d
     computed_at = datetime.now().isoformat()
     result["used_fresh_fetch"] = True
     result["graph_fetch_status"] = fetch_status
+    result["relationship_cache"] = cache_summary
     result["target_profile"] = {
         "username": metadata_username,
         "full_name": metadata_full_name,
@@ -729,6 +944,63 @@ def refresh_followback_prediction(prediction_id: str, instagram_user: dict) -> d
             else "pending",
         )
         or {}
+    )
+
+
+def get_target_relationship_cache_status(
+    app_user_id: str,
+    instagram_user: dict,
+    target_profile_id: str,
+    sync_counts: bool = False,
+) -> dict[str, dict[str, object]]:
+    reference_profile_id = instagram_user["instagram_user_id"]
+    if sync_counts:
+        profile = _build_profile(instagram_user)
+        metadata = ii.get_target_user_data(profile, target_profile_id)
+        metadata_time = datetime.now().isoformat()
+        metadata_follower_count = _as_int(metadata.get("account_followers_count"))
+        metadata_following_count = _as_int(metadata.get("account_following_count"))
+        cached_profile = db_service.get_target_profile(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+        )
+        db_service.upsert_target_profile(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+            username=_as_str(metadata.get("username"))
+            or (cached_profile or {}).get("username"),
+            full_name=_as_str(metadata.get("full_name"))
+            or (cached_profile or {}).get("full_name"),
+            follower_count=metadata_follower_count,
+            following_count=metadata_following_count,
+            is_private=bool(metadata.get("is_private", False)),
+            is_verified=bool(metadata.get("is_verified", False)),
+            me_following_account=bool(metadata.get("me_following_account", False)),
+            being_followed_by_account=bool(
+                metadata.get("being_followed_by_account", False)
+            ),
+            fetch_status=(cached_profile or {}).get("fetch_status") or "metadata_only",
+            metadata_fetched_at=metadata_time,
+            relationships_fetched_at=(cached_profile or {}).get(
+                "relationships_fetched_at"
+            ),
+            last_error=(cached_profile or {}).get("last_error"),
+        )
+        _invalidate_changed_count_caches(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+            follower_count=metadata_follower_count,
+            following_count=metadata_following_count,
+            invalidated_at=metadata_time,
+        )
+
+    return db_service.get_target_profile_relationship_cache_summary(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=target_profile_id,
     )
 
 

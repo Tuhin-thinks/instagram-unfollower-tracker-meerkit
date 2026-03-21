@@ -35,6 +35,7 @@ def start_prediction_worker() -> None:
                 account_handler.refresh_followback_prediction(
                     prediction_id=prediction_id,
                     instagram_user=item["instagram_user"],
+                    relationship_type=item.get("relationship_type"),
                 )
                 prediction_runner.mark_task_completed(task_id)
             except Exception as exc:

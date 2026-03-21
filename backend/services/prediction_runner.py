@@ -94,13 +94,19 @@ def enqueue_prediction_refresh(
     target_profile_id: str,
     instagram_user: dict,
     refresh_requested: bool,
+    relationship_type: str | None = None,
 ) -> dict:
+    task_type = (
+        f"prediction_refresh_{relationship_type}"
+        if relationship_type in {"followers", "following"}
+        else "prediction_refresh"
+    )
     task = db_service.create_prediction_task(
         prediction_id=prediction_id,
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
         target_profile_id=target_profile_id,
-        task_type="prediction_refresh",
+        task_type=task_type,
         refresh_requested=refresh_requested,
     )
     _set_state(task["task_id"], task)
@@ -109,6 +115,7 @@ def enqueue_prediction_refresh(
             "task_id": task["task_id"],
             "prediction_id": prediction_id,
             "instagram_user": instagram_user,
+            "relationship_type": relationship_type,
         }
     )
     return task
