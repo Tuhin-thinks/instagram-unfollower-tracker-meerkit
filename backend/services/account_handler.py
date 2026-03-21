@@ -523,36 +523,50 @@ def compute_followback_chances(
             reasons.append("Verified accounts are less likely to follow back")
 
         follower_count = target_profile.get("follower_count")
-        if isinstance(follower_count, int):
-            if follower_count <= 2_000:
-                score += 0.18
+        if isinstance(follower_count, int) and follower_count > 0:
+            # Continuous log-scale adjustment: smaller accounts are more likely to follow back
+            fc_adj = max(-0.42, min(0.22, 0.796 - 0.215 * math.log10(follower_count)))
+            score += fc_adj
+            if fc_adj > 0.05:
                 reasons.append("Smaller audience size increases follow-back odds")
-            elif follower_count >= 100_000:
-                score -= 0.42
+            elif fc_adj < -0.10:
                 reasons.append("Large audience size lowers follow-back odds")
 
         following_count = _as_int(target_profile.get("following_count"))
-        following_to_follower_ratio = _safe_ratio(following_count, follower_count)
-        if following_to_follower_ratio >= 0.8:
-            score += 0.16
-            reasons.append("Higher follow ratio can indicate stronger reciprocity")
-        elif follower_count and following_to_follower_ratio <= 0.08:
-            score -= 0.12
-            reasons.append("Low follow ratio can reduce reciprocity odds")
+        if (
+            following_count is not None
+            and isinstance(follower_count, int)
+            and follower_count > 0
+        ):
+            # Continuous tanh adjustment: ratio near or above 1.0 is the strongest positive signal
+            r = min(_safe_ratio(following_count, follower_count), 3.0)
+            ratio_adj = 0.21 * math.tanh(2.5 * (r - 0.35))
+            score += ratio_adj
+            if ratio_adj >= 0.10:
+                reasons.append(
+                    "Following count close to follower count suggests reciprocal behavior"
+                )
+            elif ratio_adj <= -0.08:
+                reasons.append(
+                    "Very low following-to-follower ratio reduces follow-back likelihood"
+                )
 
     mutual_followers_count = _as_int(metadata_features.get("mutual_followers_count"))
     if isinstance(mutual_followers_count, int) and mutual_followers_count > 0:
-        score += min(0.55, mutual_followers_count * 0.06)
-        confidence += min(0.14, 0.03 + mutual_followers_count * 0.015)
-        reasons.append("Mutual followers increase likelihood of follow-back")
+        # Keep mutuals as a weak supporting feature rather than a dominant signal.
+        score += min(0.22, mutual_followers_count * 0.02)
+        confidence += min(0.08, 0.02 + mutual_followers_count * 0.006)
+        reasons.append(
+            "Mutual followers increase likelihood of follow-back (small effect)"
+        )
 
     mutual_to_follower_ratio = _safe_ratio(
         mutual_followers_count,
         _as_int(target_profile.get("follower_count")) if target_profile else None,
     )
     if mutual_to_follower_ratio >= 0.03:
-        score += min(0.35, mutual_to_follower_ratio * 3.0)
-        reasons.append("Mutual follower ratio suggests a closer audience overlap")
+        score += min(0.12, mutual_to_follower_ratio * 1.2)
+        reasons.append("Mutual follower ratio adds slight audience overlap context")
 
     media_count = _as_int(metadata_features.get("media_count"))
     if isinstance(media_count, int) and media_count >= 1000:
