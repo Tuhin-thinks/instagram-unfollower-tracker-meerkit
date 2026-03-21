@@ -57,3 +57,35 @@ export interface MeResponse {
   instagram_users: InstagramUserRecord[]
   active_instagram_user: InstagramUserRecord | null
 }
+
+export interface InstagramApiUsageCallerSummary {
+  caller_service: string
+  caller_method: string
+  all_time_count: number
+  last_24h_count: number
+}
+
+export interface InstagramApiUsageCategorySummary {
+  category: string
+  all_time_count: number
+  last_24h_count: number
+  callers: InstagramApiUsageCallerSummary[]
+}
+
+export interface InstagramApiUsageAccountSummary {
+  instagram_user_id: string
+  account_name?: string | null
+  all_time_count: number
+  last_24h_count: number
+  categories: InstagramApiUsageCategorySummary[]
+}
+
+export interface InstagramApiUsageSummaryResponse {
+  generated_at: string
+  window_start_24h: string
+  totals: {
+    all_time_count: number
+    last_24h_count: number
+  }
+  accounts: InstagramApiUsageAccountSummary[]
+}

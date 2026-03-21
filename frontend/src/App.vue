@@ -8,7 +8,10 @@ import PredictionsBulkView from "./views/PredictionsBulkView.vue";
 import DiscoveryView from "./views/DiscoveryView.vue";
 import TasksView from "./views/TasksView.vue";
 import * as api from "./services/api";
-import type { InstagramUserRecord } from "./types/follower";
+import type {
+    InstagramUserRecord,
+    InstagramApiUsageAccountSummary,
+} from "./types/follower";
 
 const queryClient = useQueryClient();
 const route = useRoute();
@@ -33,6 +36,9 @@ const accountUpdateForm = ref({
     cookie_string: "",
 });
 const accountUpdateMessage = ref("");
+const selectedApiUsage = ref<InstagramApiUsageAccountSummary | null>(null);
+const apiUsageLoading = ref(false);
+const apiUsageError = ref("");
 
 const { data: meData, isLoading: meLoading } = useQuery({
     queryKey: ["me"],
@@ -245,6 +251,18 @@ async function loadDetails(instagramUserId: string) {
         accountUpdateForm.value.cookie_string = "";
     }
     accountUpdateMessage.value = "";
+
+    apiUsageLoading.value = true;
+    apiUsageError.value = "";
+    try {
+        const summary = await api.getInstagramApiUsageSummary(instagramUserId);
+        selectedApiUsage.value = summary.accounts[0] ?? null;
+    } catch (_err) {
+        selectedApiUsage.value = null;
+        apiUsageError.value = "Could not load API usage metrics right now.";
+    } finally {
+        apiUsageLoading.value = false;
+    }
 }
 
 async function openDetails(instagramUserId: string) {
@@ -575,6 +593,61 @@ const discoveryUsername = computed(() => {
                             Credential warning: one or more credentials are older than 1 day.
                         </p>
                     </div>
+
+                    <section class="mt-6 border border-gray-200 rounded-xl p-4">
+                        <h3 class="text-sm font-semibold text-gray-800">Instagram API Usage</h3>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Grouped by category and caller for this account.
+                        </p>
+
+                        <p v-if="apiUsageLoading" class="text-sm text-gray-500 mt-3">Loading usage metrics…</p>
+                        <p v-else-if="apiUsageError" class="text-sm text-rose-600 mt-3">{{ apiUsageError }}</p>
+
+                        <div v-else-if="selectedApiUsage" class="mt-4">
+                            <div class="grid grid-cols-2 gap-3 mb-4">
+                                <div class="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                                    <p class="text-xs text-gray-500 uppercase tracking-wide">All time</p>
+                                    <p class="text-sm font-semibold text-gray-900">
+                                        {{ selectedApiUsage.all_time_count.toLocaleString() }} calls
+                                    </p>
+                                </div>
+                                <div class="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
+                                    <p class="text-xs text-gray-500 uppercase tracking-wide">Last 24h</p>
+                                    <p class="text-sm font-semibold text-gray-900">
+                                        {{ selectedApiUsage.last_24h_count.toLocaleString() }} calls
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div v-if="selectedApiUsage.categories.length" class="space-y-3">
+                                <div
+                                    v-for="category in selectedApiUsage.categories"
+                                    :key="category.category"
+                                    class="rounded-lg border border-gray-200 p-3"
+                                >
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                                        <p class="text-sm font-semibold text-gray-800">{{ category.category }}</p>
+                                        <p class="text-xs text-gray-500">
+                                            {{ category.all_time_count.toLocaleString() }} total · {{ category.last_24h_count.toLocaleString() }} in 24h
+                                        </p>
+                                    </div>
+                                    <div class="mt-2 space-y-1" v-if="category.callers.length">
+                                        <p
+                                            v-for="caller in category.callers"
+                                            :key="`${caller.caller_service}:${caller.caller_method}`"
+                                            class="text-xs text-gray-600"
+                                        >
+                                            {{ caller.caller_service }}.{{ caller.caller_method }}
+                                            — {{ caller.all_time_count.toLocaleString() }} total, {{ caller.last_24h_count.toLocaleString() }} in 24h
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p v-else class="text-sm text-gray-500">No tracked API calls yet for this account.</p>
+                        </div>
+                        <p v-else class="text-sm text-gray-500 mt-3">No tracked API calls yet for this account.</p>
+                    </section>
 
                     <form class="mt-6 space-y-3 border border-gray-200 rounded-xl p-4" @submit.prevent="submitInstagramUserEdits()">
                         <h3 class="text-sm font-semibold text-gray-800">Update Account Details</h3>

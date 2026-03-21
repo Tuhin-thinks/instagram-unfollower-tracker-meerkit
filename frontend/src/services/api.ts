@@ -6,6 +6,7 @@ import type {
   ScanMeta,
   MeResponse,
   InstagramUserRecord,
+  InstagramApiUsageSummaryResponse,
 } from '../types/follower'
 import type {
   FollowBackPredictionResponse,
@@ -80,6 +81,13 @@ export const deleteInstagramUser = (instagramUserId: string) =>
 
 export const deleteAllInstagramUsers = () =>
   http.delete<{ ok: boolean; me: MeResponse }>('/auth/instagram-users').then((r) => r.data)
+
+export const getInstagramApiUsageSummary = (instagramUserId?: string) =>
+  http
+    .get<InstagramApiUsageSummaryResponse>('/auth/instagram-api-usage', {
+      params: instagramUserId ? { instagram_user_id: instagramUserId } : undefined,
+    })
+    .then((r) => r.data)
 
 export const triggerScan = () => http.post('/scan', null, { params: { profile_id: activeInstagramUserId } })
 

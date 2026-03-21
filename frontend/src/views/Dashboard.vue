@@ -4,7 +4,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
 import FollowerCard from "../components/FollowerCard.vue";
 import SkeletonCard from "../components/SkeletonCard.vue";
 import * as api from "../services/api";
-import type { ScanStatus, FollowerRecord } from "../types/follower";
+import type {
+    ScanStatus,
+    FollowerRecord,
+    InstagramApiUsageCategorySummary,
+} from "../types/follower";
 
 const props = defineProps<{
     profileId: string;
@@ -39,6 +43,13 @@ const { data: diff, isLoading: diffLoading } = useQuery({
     queryKey: ["diff", "latest", props.profileId],
     queryFn: api.getLatestDiff,
     staleTime: Infinity,
+    refetchOnWindowFocus: false,
+});
+
+const { data: apiUsageSummary } = useQuery({
+    queryKey: ["api", "usage", props.profileId],
+    queryFn: () => api.getInstagramApiUsageSummary(props.profileId),
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
 });
 
@@ -101,6 +112,16 @@ const tabs = computed(() => [
     },
 ]);
 
+const activeAccountUsage = computed(() =>
+    apiUsageSummary.value?.accounts?.find(
+        (item) => item.instagram_user_id === props.profileId,
+    ) || null,
+);
+
+const topUsageCategories = computed<InstagramApiUsageCategorySummary[]>(() =>
+    (activeAccountUsage.value?.categories || []).slice(0, 4),
+);
+
 function formatDate(iso: string | null | undefined) {
     if (!iso) return "Never";
     return new Date(iso).toLocaleString();
@@ -149,6 +170,39 @@ function formatDate(iso: string | null | undefined) {
         </div>
         <div v-if="scanError409" class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
             A scan is already in progress — please wait for it to finish.
+        </div>
+    </div>
+
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+                <p class="text-xs text-gray-400 uppercase tracking-wide font-medium mb-0.5">
+                    Instagram API usage (active account)
+                </p>
+                <p class="text-base font-semibold">
+                    {{ (activeAccountUsage?.all_time_count ?? 0).toLocaleString() }} calls total
+                </p>
+                <p class="text-sm text-gray-500 mt-1">
+                    {{ (activeAccountUsage?.last_24h_count ?? 0).toLocaleString() }} calls in last 24h
+                </p>
+            </div>
+            <p class="text-xs text-gray-500" v-if="apiUsageSummary?.generated_at">
+                Updated {{ formatDate(apiUsageSummary.generated_at) }}
+            </p>
+        </div>
+
+        <div v-if="topUsageCategories.length" class="mt-4 grid sm:grid-cols-2 gap-3">
+            <div
+                v-for="category in topUsageCategories"
+                :key="category.category"
+                class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
+            >
+                <p class="text-xs uppercase tracking-wide text-gray-500">{{ category.category }}</p>
+                <p class="text-sm font-semibold text-gray-800 mt-0.5">
+                    {{ category.all_time_count.toLocaleString() }} total
+                </p>
+                <p class="text-xs text-gray-500">{{ category.last_24h_count.toLocaleString() }} in 24h</p>
+            </div>
         </div>
     </div>
 
