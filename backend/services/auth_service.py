@@ -5,7 +5,8 @@ from datetime import datetime
 from pathlib import Path
 
 from backend.config import USERS_DIR, profile_data_dir, user_dir
-from insta_interface import InstagramProfile, get_user_data
+from backend.services.instagram_gateway import instagram_gateway
+from insta_interface import InstagramProfile
 
 
 def _read_json(path: Path, fallback: dict | list) -> dict | list:
@@ -102,7 +103,7 @@ def get_instagram_users(app_user_id: str) -> list[dict]:
 
 
 def _safe_fetch_instagram_username(
-    csrf_token: str, session_id: str, user_id: str
+    app_user_id: str, csrf_token: str, session_id: str, user_id: str
 ) -> str | None:
     """Fetch username from Instagram for friendlier first-time profile naming."""
     try:
@@ -111,7 +112,13 @@ def _safe_fetch_instagram_username(
             session_id=session_id,
             user_id=user_id,
         )
-        user_data = get_user_data(profile=profile)
+        user_data = instagram_gateway.get_user_data(
+            app_user_id=app_user_id,
+            instagram_user_id=user_id,
+            profile=profile,
+            caller_service="auth_service",
+            caller_method="_safe_fetch_instagram_username",
+        )
     except Exception:
         return None
 
@@ -154,6 +161,7 @@ def add_instagram_user(
 
     instagram_users = get_instagram_users(app_user_id)
     fetched_username = _safe_fetch_instagram_username(
+        app_user_id=app_user_id,
         csrf_token=csrf_token,
         session_id=session_id,
         user_id=user_id,
@@ -237,6 +245,7 @@ def update_instagram_user(
             target_user["csrf_token_added_at"] = now_iso
 
         refreshed_username = _safe_fetch_instagram_username(
+            app_user_id=app_user_id,
             csrf_token=target_user.get("csrf_token", ""),
             session_id=target_user["session_id"],
             user_id=target_user["user_id"],

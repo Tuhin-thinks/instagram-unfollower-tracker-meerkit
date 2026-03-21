@@ -1,6 +1,7 @@
 import threading
 import time
 import traceback
+from typing import Any, cast
 
 from backend.config import IMAGE_DOWNLOAD_DELAY_SECONDS
 from backend.extensions import image_download_queue
@@ -31,9 +32,21 @@ def start_download_worker() -> None:
             if item is None:  # poison pill to stop
                 break
             try:
-                _app_user_id, profile_pk_id, profile_pic_url = item
+                payload = cast(tuple[Any, ...], item)
+                if len(payload) == 4:
+                    app_user_id, instagram_user_id, profile_pk_id, profile_pic_url = payload
+                elif len(payload) == 3:
+                    app_user_id, profile_pk_id, profile_pic_url = payload
+                    instagram_user_id = "unknown"
+                else:
+                    raise ValueError(
+                        f"Unexpected download payload size: {len(payload)}"
+                    )
                 img_path = downloader.process_img_download(
-                    profile_pk_id, profile_pic_url
+                    app_user_id,
+                    instagram_user_id,
+                    profile_pk_id,
+                    profile_pic_url,
                 )
                 if img_path:
                     cache_image_path([(profile_pk_id, profile_pic_url, img_path)])

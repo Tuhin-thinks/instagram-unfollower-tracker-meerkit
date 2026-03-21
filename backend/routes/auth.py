@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import auth_service
+from backend.services import auth_service, db_service
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -76,6 +76,33 @@ def me():
     _sync_active_instagram_user_session(app_user_id)
 
     return jsonify(auth_service.build_me_payload(app_user_id, app_user_name))
+
+
+@bp.get("/instagram-api-usage")
+def instagram_api_usage_summary():
+    """Return grouped Instagram API usage metrics for current app user."""
+    current = _current_app_user()
+    if not current:
+        return jsonify({"error": "Not logged in"}), 401
+
+    app_user_id, _app_user_name = current
+    instagram_user_id = (request.args.get("instagram_user_id") or "").strip() or None
+
+    summary = db_service.get_instagram_api_usage_summary(
+        app_user_id=app_user_id,
+        instagram_user_id=instagram_user_id,
+    )
+    users = auth_service.get_instagram_users(app_user_id)
+    account_name_by_id = {
+        str(user.get("instagram_user_id")): user.get("name")
+        for user in users
+        if user.get("instagram_user_id")
+    }
+    for account in summary.get("accounts", []):
+        account["account_name"] = account_name_by_id.get(
+            str(account.get("instagram_user_id"))
+        )
+    return jsonify(summary)
 
 
 @bp.get("/instagram-users")

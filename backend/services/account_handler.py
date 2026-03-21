@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 import insta_interface as ii
 from backend.services import db_service, relationship_cache
+from backend.services.instagram_gateway import instagram_gateway
 
 _PREDICTION_TTL = timedelta(days=7)
 _CACHE_FRESHNESS = timedelta(hours=6)
@@ -674,7 +675,14 @@ def request_followback_prediction(
         raise ValueError("username, profile link, or user_id is required")
 
     profile = _build_profile(instagram_user)
-    target_profile_id = user_id or ii.resolve_target_user_pk(username or "", profile)
+    target_profile_id = user_id or instagram_gateway.resolve_target_user_pk(
+        app_user_id=app_user_id,
+        instagram_user_id=instagram_user["instagram_user_id"],
+        profile=profile,
+        username=username or "",
+        caller_service="account_handler",
+        caller_method="request_followback_prediction",
+    )
     if not target_profile_id:
         raise ValueError("Could not resolve target instagram user")
 
@@ -793,7 +801,14 @@ def refresh_followback_prediction(
     reference_profile_id = prediction["reference_profile_id"]
     app_user_id = prediction["app_user_id"]
 
-    metadata = ii.get_target_user_data(profile, target_profile_id)
+    metadata = instagram_gateway.get_target_user_data(
+        app_user_id=app_user_id,
+        instagram_user_id=reference_profile_id,
+        profile=profile,
+        target_user_id=target_profile_id,
+        caller_service="account_handler",
+        caller_method="refresh_followback_prediction",
+    )
     metadata_time = datetime.now().isoformat()
     metadata_username = _as_str(metadata.get("username"))
     metadata_full_name = _as_str(metadata.get("full_name"))
@@ -833,12 +848,26 @@ def refresh_followback_prediction(
     fetch_status = "ready"
     last_error: str | None = None
     fetch_map = {
-        "followers": ii.get_target_followers_v2,
-        "following": ii.get_target_following_v2,
+        "followers": lambda target_id: instagram_gateway.get_target_followers_v2(
+            app_user_id=app_user_id,
+            instagram_user_id=reference_profile_id,
+            profile=profile,
+            target_user_id=target_id,
+            caller_service="account_handler",
+            caller_method="refresh_followback_prediction",
+        ),
+        "following": lambda target_id: instagram_gateway.get_target_following_v2(
+            app_user_id=app_user_id,
+            instagram_user_id=reference_profile_id,
+            profile=profile,
+            target_user_id=target_id,
+            caller_service="account_handler",
+            caller_method="refresh_followback_prediction",
+        ),
     }
     for relationship in sorted(relationships_to_refresh):
         try:
-            records = fetch_map[relationship](profile, target_profile_id)
+            records = fetch_map[relationship](target_profile_id)
             db_service.replace_target_profile_relationships(
                 app_user_id=app_user_id,
                 reference_profile_id=reference_profile_id,
@@ -970,7 +999,14 @@ def get_target_relationship_cache_status(
     reference_profile_id = instagram_user["instagram_user_id"]
     if sync_counts:
         profile = _build_profile(instagram_user)
-        metadata = ii.get_target_user_data(profile, target_profile_id)
+        metadata = instagram_gateway.get_target_user_data(
+            app_user_id=app_user_id,
+            instagram_user_id=reference_profile_id,
+            profile=profile,
+            target_user_id=target_profile_id,
+            caller_service="account_handler",
+            caller_method="get_target_relationship_cache_status",
+        )
         metadata_time = datetime.now().isoformat()
         metadata_follower_count = _as_int(metadata.get("account_followers_count"))
         metadata_following_count = _as_int(metadata.get("account_following_count"))

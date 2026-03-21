@@ -43,7 +43,7 @@ def get_image(pk_id: str):
     if not url:
         return jsonify({"error": "User not found in latest scan"}), 404
 
-    enqueue_image_download(app_user_id, pk_id, url)
+    enqueue_image_download(app_user_id, instagram_user["instagram_user_id"], pk_id, url)
     resp = send_file(IMAGE_CACHE_DIR / "no-img-available.jpeg", mimetype="image/jpeg")
     resp.headers["Cache-Control"] = "public, max-age=60"
     return resp

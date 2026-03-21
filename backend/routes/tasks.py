@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import cast
 
 from flask import Blueprint, jsonify, request
@@ -6,6 +7,22 @@ from backend.routes import get_active_context
 from backend.services import prediction_runner, scan_runner
 
 bp = Blueprint("tasks", __name__, url_prefix="/api")
+_MAX_TASKS = 10
+_CANCELLED_EXPIRY_SECONDS = 300  # 5 minutes
+
+
+def _keep_task(task: dict) -> bool:
+    """Return False for cancelled tasks that have been cancelled for more than 5 minutes."""
+    if task.get("status") != "cancelled":
+        return True
+    completed_at = task.get("completed_at")
+    if not completed_at:
+        return True
+    try:
+        age = (datetime.now() - datetime.fromisoformat(completed_at)).total_seconds()
+        return age < _CANCELLED_EXPIRY_SECONDS
+    except ValueError:
+        return True
 
 
 @bp.get("/tasks")
@@ -57,6 +74,8 @@ def list_tasks():
         key=lambda item: item.get("started_at") or item.get("queued_at") or "",
         reverse=True,
     )
+    tasks = [t for t in tasks if _keep_task(t)]
+    tasks = tasks[:_MAX_TASKS]
 
     running_count = sum(
         1 for item in tasks if item.get("status") in {"queued", "running"}

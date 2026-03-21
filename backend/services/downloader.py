@@ -1,16 +1,31 @@
+from typing import Any, cast
+
 import requests
 
 from backend.config import IMAGE_CACHE_DIR
 from backend.extensions import image_download_queue
+from backend.services.instagram_api_usage import instagram_api_usage_tracker
 
 
-def process_img_download(profile_pk_id: str, profile_pic_url: str) -> str | None:
+def process_img_download(
+    app_user_id: str,
+    instagram_user_id: str,
+    profile_pk_id: str,
+    profile_pic_url: str,
+) -> str | None:
     """Downloads the profile image for a given pk_id and profile_pic_url, and caches it on disk."""
     img_path = IMAGE_CACHE_DIR / f"{profile_pk_id}.jpeg"
     if img_path.exists():
         return str(img_path)
 
-    response = requests.get(profile_pic_url, timeout=10)
+    response = instagram_api_usage_tracker.track_call(
+        app_user_id=app_user_id,
+        instagram_user_id=instagram_user_id,
+        category="img_download",
+        caller_service="downloader",
+        caller_method="process_img_download",
+        execute=lambda: requests.get(profile_pic_url, timeout=10),
+    )
     response.raise_for_status()
     # store in cache directory with filename as pk_id.jpg
     content_type = response.headers.get("Content-Type", "")
@@ -29,7 +44,12 @@ def process_img_download(profile_pk_id: str, profile_pic_url: str) -> str | None
 
 
 def enqueue_image_download(
-    app_user_id: str, profile_pk_id: str, profile_pic_url: str
+    app_user_id: str,
+    instagram_user_id: str,
+    profile_pk_id: str,
+    profile_pic_url: str,
 ) -> None:
     """Enqueue an image download task for the given profile_pk_id and profile_pic_url."""
-    image_download_queue.put((app_user_id, profile_pk_id, profile_pic_url))
+    cast(Any, image_download_queue).put(
+        (app_user_id, instagram_user_id, profile_pk_id, profile_pic_url)
+    )

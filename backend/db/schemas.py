@@ -179,6 +179,20 @@ CREATE TABLE IF NOT EXISTS prediction_assessments (
     create_date TEXT NOT NULL
 );"""
 
+INSTAGRAM_API_USAGE_EVENTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS instagram_api_usage_events (
+    event_id TEXT PRIMARY KEY,
+    app_user_id TEXT NOT NULL,
+    instagram_user_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    caller_service TEXT NOT NULL,
+    caller_method TEXT NOT NULL,
+    success INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    called_at TEXT NOT NULL,
+    create_date TEXT NOT NULL
+);"""
+
 TARGET_PROFILE_RELATIONSHIPS_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_target_profile_relationship_scope
 ON target_profile_relationships (
@@ -213,6 +227,16 @@ CREATE INDEX IF NOT EXISTS idx_prediction_assessments_prediction
 ON prediction_assessments (prediction_id, recorded_at);
 """
 
+INSTAGRAM_API_USAGE_SCOPE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_instagram_api_usage_scope
+ON instagram_api_usage_events (app_user_id, instagram_user_id, category, called_at);
+"""
+
+INSTAGRAM_API_USAGE_CALLER_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_instagram_api_usage_caller
+ON instagram_api_usage_events (app_user_id, caller_service, caller_method, called_at);
+"""
+
 
 schema_collection = {
     "accounts": ACCOUNTS_SCHEMA,
@@ -227,9 +251,12 @@ schema_collection = {
     "predictions": PREDICTIONS_SCHEMA,
     "prediction_tasks": PREDICTION_TASKS_SCHEMA,
     "prediction_assessments": PREDICTION_ASSESSMENTS_SCHEMA,
+    "instagram_api_usage_events": INSTAGRAM_API_USAGE_EVENTS_SCHEMA,
     "idx_target_profile_relationship_scope": TARGET_PROFILE_RELATIONSHIPS_INDEX,
     "idx_target_profile_list_cache_active": TARGET_PROFILE_LIST_CACHE_ACTIVE_INDEX,
     "idx_predictions_scope": PREDICTIONS_SCOPE_INDEX,
     "idx_prediction_tasks_scope": PREDICTION_TASKS_SCOPE_INDEX,
     "idx_prediction_assessments_prediction": PREDICTION_ASSESSMENTS_PREDICTION_INDEX,
+    "idx_instagram_api_usage_scope": INSTAGRAM_API_USAGE_SCOPE_INDEX,
+    "idx_instagram_api_usage_caller": INSTAGRAM_API_USAGE_CALLER_INDEX,
 }

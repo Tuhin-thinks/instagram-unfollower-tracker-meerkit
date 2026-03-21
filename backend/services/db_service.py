@@ -2,7 +2,7 @@ import hashlib
 import json
 import threading
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -1514,3 +1514,182 @@ def list_labeled_followback_predictions(
             if normalized is not None:
                 results.append(normalized)
         return results
+
+
+def create_instagram_api_usage_event(
+    *,
+    app_user_id: str,
+    instagram_user_id: str,
+    category: str,
+    caller_service: str,
+    caller_method: str,
+    success: bool,
+    duration_ms: int,
+    called_at: str | None = None,
+) -> dict:
+    event_id = f"api_evt_{uuid4().hex}"
+    called_at_value = called_at or _now_iso()
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO instagram_api_usage_events (
+                event_id,
+                app_user_id,
+                instagram_user_id,
+                category,
+                caller_service,
+                caller_method,
+                success,
+                duration_ms,
+                called_at,
+                create_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                app_user_id,
+                instagram_user_id,
+                category,
+                caller_service,
+                caller_method,
+                int(success),
+                duration_ms,
+                called_at_value,
+                _now_iso(),
+            ),
+        )
+        conn.commit()
+    return {
+        "event_id": event_id,
+        "app_user_id": app_user_id,
+        "instagram_user_id": instagram_user_id,
+        "category": category,
+        "caller_service": caller_service,
+        "caller_method": caller_method,
+        "success": success,
+        "duration_ms": duration_ms,
+        "called_at": called_at_value,
+    }
+
+
+def get_instagram_api_usage_summary(
+    app_user_id: str,
+    instagram_user_id: str | None = None,
+) -> dict:
+    cutoff_24h = (datetime.now() - timedelta(hours=24)).isoformat()
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        if instagram_user_id:
+            cursor.execute(
+                """
+                SELECT
+                    instagram_user_id,
+                    category,
+                    caller_service,
+                    caller_method,
+                    COUNT(*) AS all_time_count,
+                    SUM(CASE WHEN called_at >= ? THEN 1 ELSE 0 END) AS last_24h_count
+                FROM instagram_api_usage_events
+                WHERE app_user_id = ?
+                  AND instagram_user_id = ?
+                GROUP BY instagram_user_id, category, caller_service, caller_method
+                ORDER BY instagram_user_id, category, caller_service, caller_method
+                """,
+                (cutoff_24h, app_user_id, instagram_user_id),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT
+                    instagram_user_id,
+                    category,
+                    caller_service,
+                    caller_method,
+                    COUNT(*) AS all_time_count,
+                    SUM(CASE WHEN called_at >= ? THEN 1 ELSE 0 END) AS last_24h_count
+                FROM instagram_api_usage_events
+                WHERE app_user_id = ?
+                GROUP BY instagram_user_id, category, caller_service, caller_method
+                ORDER BY instagram_user_id, category, caller_service, caller_method
+                """,
+                (cutoff_24h, app_user_id),
+            )
+        rows = [dict(row) for row in cursor.fetchall()]
+
+    accounts_map: dict[str, dict] = {}
+    total_all_time = 0
+    total_last_24h = 0
+
+    for row in rows:
+        account_id = row["instagram_user_id"]
+        category = row["category"]
+        caller_service = row["caller_service"]
+        caller_method = row["caller_method"]
+        all_time_count = int(row.get("all_time_count") or 0)
+        last_24h_count = int(row.get("last_24h_count") or 0)
+
+        total_all_time += all_time_count
+        total_last_24h += last_24h_count
+
+        account_payload = accounts_map.setdefault(
+            account_id,
+            {
+                "instagram_user_id": account_id,
+                "all_time_count": 0,
+                "last_24h_count": 0,
+                "categories": {},
+            },
+        )
+        account_payload["all_time_count"] += all_time_count
+        account_payload["last_24h_count"] += last_24h_count
+
+        category_payload = account_payload["categories"].setdefault(
+            category,
+            {
+                "category": category,
+                "all_time_count": 0,
+                "last_24h_count": 0,
+                "callers": [],
+            },
+        )
+        category_payload["all_time_count"] += all_time_count
+        category_payload["last_24h_count"] += last_24h_count
+        category_payload["callers"].append(
+            {
+                "caller_service": caller_service,
+                "caller_method": caller_method,
+                "all_time_count": all_time_count,
+                "last_24h_count": last_24h_count,
+            }
+        )
+
+    accounts: list[dict] = []
+    for account_payload in accounts_map.values():
+        categories = sorted(
+            account_payload["categories"].values(),
+            key=lambda item: (item["all_time_count"], item["category"]),
+            reverse=True,
+        )
+        accounts.append(
+            {
+                "instagram_user_id": account_payload["instagram_user_id"],
+                "all_time_count": account_payload["all_time_count"],
+                "last_24h_count": account_payload["last_24h_count"],
+                "categories": categories,
+            }
+        )
+
+    accounts.sort(key=lambda item: item["all_time_count"], reverse=True)
+
+    return {
+        "generated_at": _now_iso(),
+        "window_start_24h": cutoff_24h,
+        "totals": {
+            "all_time_count": total_all_time,
+            "last_24h_count": total_last_24h,
+        },
+        "accounts": accounts,
+    }

@@ -1,5 +1,6 @@
 import threading
 from datetime import datetime, timedelta
+from typing import cast
 
 from backend.extensions import prediction_refresh_queue
 from backend.services import db_service
@@ -33,13 +34,23 @@ def _parse_timestamp(value: object) -> datetime | None:
 
 
 def is_stale_running_task(task: dict | None) -> bool:
-    if not task or task.get("status") != "running":
+    if not task:
         return False
 
-    started_at = _parse_timestamp(task.get("started_at"))
-    if started_at is None:
-        return True
-    return datetime.now() - started_at > _STALE_RUNNING_TIMEOUT
+    status = task.get("status")
+    if status == "running":
+        started_at = _parse_timestamp(task.get("started_at"))
+        if started_at is None:
+            return True
+        return datetime.now() - started_at > _STALE_RUNNING_TIMEOUT
+
+    if status == "queued":
+        queued_at = _parse_timestamp(task.get("queued_at"))
+        if queued_at is None:
+            return True
+        return datetime.now() - queued_at > _STALE_RUNNING_TIMEOUT
+
+    return False
 
 
 def fail_stale_task(task: dict | None) -> dict | None:
@@ -48,10 +59,12 @@ def fail_stale_task(task: dict | None) -> dict | None:
     if task is None:
         return None
 
-    stale_task = mark_task_error(
-        task["task_id"],
-        "Prediction task became inactive after running for more than 5 minutes.",
+    stale_error = (
+        "Prediction task stayed queued for more than 5 minutes."
+        if task.get("status") == "queued"
+        else "Prediction task became inactive after running for more than 5 minutes."
     )
+    stale_task = mark_task_error(task["task_id"], stale_error)
     db_service.update_prediction(task["prediction_id"], status="error")
     return stale_task
 
@@ -158,7 +171,9 @@ def mark_task_completed(task_id: str) -> dict | None:
 
 
 def mark_task_error(task_id: str, error: str) -> dict | None:
-    current = get_task_status(task_id)
+    # Use raw task state here to avoid recursive stale normalization loops:
+    # fail_stale_task -> mark_task_error -> get_task_status -> normalize_task -> fail_stale_task
+    current = _merge_state(db_service.get_prediction_task(task_id))
     if current and current.get("status") == "cancelled":
         return current
     task = db_service.update_prediction_task(
@@ -213,10 +228,14 @@ def cancel_task(task_id: str) -> dict | None:
 
 def list_active_tasks(app_user_id: str, reference_profile_id: str) -> list[dict]:
     list_tasks_fn = getattr(db_service, "list_active_prediction_tasks", None)
+    tasks: list[dict]
     if callable(list_tasks_fn):
-        tasks = list_tasks_fn(
-            app_user_id=app_user_id,
-            reference_profile_id=reference_profile_id,
+        tasks = cast(
+            list[dict],
+            list_tasks_fn(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+            ),
         )
     else:
         tasks = []

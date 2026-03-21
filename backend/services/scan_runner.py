@@ -22,6 +22,7 @@ def _ensure_state(key: str) -> dict:
         _states[key] = {
             "status": "idle",  # idle | running | cancelled | error
             "started_at": None,
+            "cancelled_at": None,
             "last_scan_id": None,
             "last_scan_at": None,
             "error": None,
@@ -158,6 +159,7 @@ def cancel_scan(app_user_id: str, profile_id: str) -> dict:
         {
             "status": "cancelled",
             "error": "Cancelled by user.",
+            "cancelled_at": datetime.now().isoformat(),
         }
     )
     return {
@@ -191,7 +193,7 @@ def list_running_scans(app_user_id: str) -> list[dict]:
                 "error": state.get("error"),
                 "queued_at": state.get("started_at"),
                 "started_at": state.get("started_at"),
-                "completed_at": None,
+                "completed_at": state.get("cancelled_at"),
                 "target_profile_id": profile_id,
                 "target_username": None,
                 "can_cancel": state.get("status") == "running",
@@ -223,7 +225,7 @@ def get_active_scan_task(app_user_id: str, profile_id: str) -> dict | None:
         "error": state.get("error"),
         "queued_at": state.get("started_at"),
         "started_at": state.get("started_at"),
-        "completed_at": None,
+        "completed_at": state.get("cancelled_at"),
         "target_profile_id": profile_id,
         "target_username": None,
         "can_cancel": state.get("status") == "running",
