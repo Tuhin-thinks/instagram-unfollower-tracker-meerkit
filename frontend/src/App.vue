@@ -7,6 +7,9 @@ import HistoryView from "./views/HistoryView.vue";
 import PredictionsBulkView from "./views/PredictionsBulkView.vue";
 import DiscoveryView from "./views/DiscoveryView.vue";
 import TasksView from "./views/TasksView.vue";
+import AutomationView from "./views/AutomationView.vue";
+import IntelligentBatchFollowAutomationView from "./views/IntelligentBatchFollowAutomationView.vue";
+import BatchUnfollowAutomationView from "./views/BatchUnfollowAutomationView.vue";
 import TechBackground from "./components/TechBackground.vue";
 import * as api from "./services/api";
 import type {
@@ -19,7 +22,17 @@ const route = useRoute();
 const router = useRouter();
 const staleThresholdMs = 24 * 60 * 60 * 1000;
 
-type AppView = "dashboard" | "history" | "predictions" | "discovery" | "tasks" | "admin" | "details";
+type AppView =
+    | "dashboard"
+    | "history"
+    | "predictions"
+    | "automation"
+    | "automation-intelligent-follow"
+    | "automation-batch-unfollow"
+    | "discovery"
+    | "tasks"
+    | "admin"
+    | "details";
 
 const loginForm = ref({ name: "", password: "" });
 const registerForm = ref({ name: "", password: "" });
@@ -51,10 +64,34 @@ const isLoggedIn = computed(() => !!meData.value?.app_user_id);
 
 const currentView = computed<AppView>(() => {
     const view = (route.name as AppView | undefined) ?? "dashboard";
-    if (["dashboard", "history", "predictions", "discovery", "tasks", "admin", "details"].includes(view)) {
+    if (
+        [
+            "dashboard",
+            "history",
+            "predictions",
+            "automation",
+            "automation-intelligent-follow",
+            "automation-batch-unfollow",
+            "discovery",
+            "tasks",
+            "admin",
+            "details",
+        ].includes(view)
+    ) {
         return view;
     }
     return "dashboard";
+});
+
+const activeTab = computed(() => {
+    if (
+        currentView.value === "automation" ||
+        currentView.value === "automation-intelligent-follow" ||
+        currentView.value === "automation-batch-unfollow"
+    ) {
+        return "automation";
+    }
+    return currentView.value;
 });
 
 const { mutate: doRegister, isPending: registerPending, error: registerError } = useMutation({
@@ -402,11 +439,12 @@ const discoveryUsername = computed(() => {
                                 { key: 'dashboard',   label: '⌂ Dashboard'   },
                                 { key: 'history',     label: '📋 History'     },
                                 { key: 'predictions', label: '🔮 Predictions' },
+                                { key: 'automation',  label: '🤖 Automation'  },
                                 { key: 'tasks',       label: '⚡ Tasks'       },
                                 { key: 'admin',       label: '⚙ Admin'       },
                             ]"
                             :key="item.key"
-                            :class="currentView === item.key
+                            :class="activeTab === item.key
                                 ? 'bg-violet-600/15 text-violet-300 shadow-inner'
                                 : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'"
                             class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all"
@@ -446,6 +484,31 @@ const discoveryUsername = computed(() => {
                     <PredictionsBulkView
                         v-if="currentView === 'predictions' && activeInstagramUser"
                         :profile-id="activeInstagramUser.instagram_user_id"
+                    />
+                </KeepAlive>
+
+                <KeepAlive>
+                    <AutomationView
+                        v-if="currentView === 'automation' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        @open-intelligent-batch-follow="goTo('automation-intelligent-follow')"
+                        @open-batch-unfollow="goTo('automation-batch-unfollow')"
+                    />
+                </KeepAlive>
+
+                <KeepAlive>
+                    <IntelligentBatchFollowAutomationView
+                        v-if="currentView === 'automation-intelligent-follow' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        @back-to-automation="goTo('automation')"
+                    />
+                </KeepAlive>
+
+                <KeepAlive>
+                    <BatchUnfollowAutomationView
+                        v-if="currentView === 'automation-batch-unfollow' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        @back-to-automation="goTo('automation')"
                     />
                 </KeepAlive>
 

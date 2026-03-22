@@ -8,6 +8,17 @@ const router = createRouter({
     { path: '/dashboard', name: 'dashboard', component: RoutePlaceholder },
     { path: '/history', name: 'history', component: RoutePlaceholder },
     { path: '/predictions', name: 'predictions', component: RoutePlaceholder },
+    { path: '/automation', name: 'automation', component: RoutePlaceholder },
+    {
+      path: '/automation/intelligent-batch-follow',
+      name: 'automation-intelligent-follow',
+      component: RoutePlaceholder,
+    },
+    {
+      path: '/automation/batch-unfollow',
+      name: 'automation-batch-unfollow',
+      component: RoutePlaceholder,
+    },
     { path: '/discovery/:username?', name: 'discovery', component: RoutePlaceholder },
     { path: '/tasks', name: 'tasks', component: RoutePlaceholder },
     { path: '/admin', name: 'admin', component: RoutePlaceholder },
