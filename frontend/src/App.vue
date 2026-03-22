@@ -559,6 +559,7 @@ const discoveryUsername = computed(() => {
                     <AutomationView
                         v-if="currentView === 'automation' && activeInstagramUser"
                         :profile-id="activeInstagramUser.instagram_user_id"
+                        :profile-username="activeInstagramUser.username || undefined"
                         @open-intelligent-batch-follow="goTo('automation-intelligent-follow')"
                         @open-batch-unfollow="goTo('automation-batch-unfollow')"
                     />
@@ -568,6 +569,7 @@ const discoveryUsername = computed(() => {
                     <IntelligentBatchFollowAutomationView
                         v-if="currentView === 'automation-intelligent-follow' && activeInstagramUser"
                         :profile-id="activeInstagramUser.instagram_user_id"
+                        :profile-username="activeInstagramUser.username || undefined"
                         @back-to-automation="goTo('automation')"
                     />
                 </KeepAlive>
@@ -576,6 +578,7 @@ const discoveryUsername = computed(() => {
                     <BatchUnfollowAutomationView
                         v-if="currentView === 'automation-batch-unfollow' && activeInstagramUser"
                         :profile-id="activeInstagramUser.instagram_user_id"
+                        :profile-username="activeInstagramUser.username || undefined"
                         @back-to-automation="goTo('automation')"
                     />
                 </KeepAlive>

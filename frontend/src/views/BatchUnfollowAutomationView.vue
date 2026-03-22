@@ -21,6 +21,7 @@ import type {
 
 const props = defineProps<{
     profileId: string;
+    profileUsername?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -436,7 +437,8 @@ const protectedPlaceholder = [
                     never included even if they match the unfollow logic.
                 </p>
                 <p class="text-xs text-rose-100/80 mt-4">
-                    Active profile: {{ props.profileId }}
+                    Active profile:
+                    {{ props.profileUsername ? '@' + props.profileUsername : props.profileId }}
                 </p>
             </div>
         </header>

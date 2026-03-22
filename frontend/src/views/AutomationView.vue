@@ -1,6 +1,7 @@
 <script setup lang="ts">
 const props = defineProps<{
     profileId: string;
+    profileUsername?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -83,7 +84,8 @@ function openCard(cardKey: string) {
                     <span
                         class="h-2 w-2 rounded-full bg-cyan-300 animate-pulse"
                     />
-                    Active profile: {{ props.profileId }}
+                    Active profile:
+                    {{ props.profileUsername ? '@' + props.profileUsername : props.profileId }}
                 </div>
             </div>
         </header>

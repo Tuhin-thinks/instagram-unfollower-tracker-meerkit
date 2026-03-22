@@ -116,13 +116,24 @@ def run_scan_for_api(
         session_id=session_id,
         user_id=reference_profile_id,
     )
-    # followers = ii.get_current_followers(profile=profile, store_data=False)
+
+    # Scans must always refresh the authenticated account's live relationship
+    # data so dashboard-triggered scans never reuse stale cache entries.
     followers = instagram_gateway.get_current_followers_v2(
         app_user_id=app_user_id,
         instagram_user_id=reference_profile_id,
         profile=profile,
         caller_service="scan_flow",
         caller_method="run_scan_for_api",
+        force_refresh=True,
+    )
+    instagram_gateway.get_current_following_v2(
+        app_user_id=app_user_id,
+        instagram_user_id=reference_profile_id,
+        profile=profile,
+        caller_service="scan_flow",
+        caller_method="run_scan_for_api",
+        force_refresh=True,
     )
 
     add_to_downloader_queue(app_user_id, reference_profile_id, followers)

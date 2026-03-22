@@ -16,6 +16,7 @@ import type { AutomationAction, AutomationActionResult } from "../types/automati
 
 const props = defineProps<{
     profileId: string;
+    profileUsername?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -296,7 +297,8 @@ function goBack() {
                     for a final <strong>Confirm Batch Follow</strong> action.
                 </p>
                 <p class="text-xs text-cyan-100/80 mt-4">
-                    Active profile: {{ props.profileId }}
+                    Active profile:
+                    {{ props.profileUsername ? '@' + props.profileUsername : props.profileId }}
                 </p>
             </div>
         </header>
