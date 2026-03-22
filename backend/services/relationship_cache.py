@@ -2,9 +2,9 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from backend.config import DATA_DIR
+from backend.config import CACHE_DIR
 
-RELATIONSHIP_CACHE_ROOT = DATA_DIR / "cache"
+RELATIONSHIP_CACHE_ROOT = CACHE_DIR
 VALID_RELATIONSHIP_TYPES = {"followers", "following"}
 
 

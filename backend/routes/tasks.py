@@ -104,7 +104,20 @@ def list_tasks():
         reverse=True,
     )
     tasks = [t for t in tasks if _keep_task(t)]
-    tasks = tasks[:_MAX_TASKS]
+
+    running_tasks = [
+        item for item in tasks if item.get("status") in {"queued", "running"}
+    ]
+    non_running_tasks = [
+        item for item in tasks if item.get("status") not in {"queued", "running"}
+    ]
+
+    # Always include all active tasks, then fill with recent non-running tasks.
+    if running_tasks:
+        max_non_running = max(_MAX_TASKS - len(running_tasks), 0)
+        tasks = [*running_tasks, *non_running_tasks[:max_non_running]]
+    else:
+        tasks = non_running_tasks[:_MAX_TASKS]
 
     running_count = sum(
         1 for item in tasks if item.get("status") in {"queued", "running"}

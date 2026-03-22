@@ -11,6 +11,30 @@ T = TypeVar("T")
 class InstagramApiUsageTracker:
     """Best-effort tracker for Instagram API usage events."""
 
+    def track_cache_hit(
+        self,
+        *,
+        app_user_id: str,
+        instagram_user_id: str,
+        category: str,
+        caller_service: str,
+        caller_method: str,
+    ) -> None:
+        try:
+            db_service.create_instagram_api_usage_event(
+                app_user_id=app_user_id,
+                instagram_user_id=instagram_user_id,
+                category=f"{category}_cache_hit",
+                caller_service=caller_service,
+                caller_method=caller_method,
+                success=True,
+                duration_ms=0,
+                called_at=datetime.now().isoformat(),
+            )
+        except Exception as exc:
+            # Metrics collection should never break primary workflows.
+            print(f"[InstagramApiUsageTracker] Failed to record cache hit: {exc}")
+
     def track_call(
         self,
         *,

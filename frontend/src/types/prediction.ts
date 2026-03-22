@@ -1,5 +1,7 @@
 export type PredictionStatus = 'queued' | 'running' | 'completed' | 'error' | 'cancelled'
 
+export type TaskStatus = PredictionStatus | 'draft' | 'staged' | 'partial'
+
 export type PredictionOutcomeStatus =
   | 'pending'
   | 'confirmed'
@@ -89,8 +91,8 @@ export interface RelationshipCacheStatusResponse {
 export interface TaskSummary {
   task_id: string
   task_type: string
-  source: 'prediction' | 'scan'
-  status: PredictionStatus
+  source: 'prediction' | 'scan' | 'automation'
+  status: TaskStatus
   progress: number | null
   error: string | null
   queued_at: string | null

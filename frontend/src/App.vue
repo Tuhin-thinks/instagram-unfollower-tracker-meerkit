@@ -16,6 +16,7 @@ import type {
     InstagramUserRecord,
     InstagramApiUsageAccountSummary,
 } from "./types/follower";
+import type { AutomationCacheEfficiencyResponse } from "./types/automation";
 
 const queryClient = useQueryClient();
 const route = useRoute();
@@ -53,6 +54,13 @@ const accountUpdateMessage = ref("");
 const selectedApiUsage = ref<InstagramApiUsageAccountSummary | null>(null);
 const apiUsageLoading = ref(false);
 const apiUsageError = ref("");
+const detailsCacheMetrics = ref<AutomationCacheEfficiencyResponse | null>(null);
+const detailsCacheLoading = ref(false);
+const detailsCacheError = ref("");
+const detailsCacheSizeBytes = ref(0);
+const detailsCacheFileCount = ref(0);
+const detailsCacheUpdatedAt = ref<string | null>(null);
+let detailsCacheSizeInterval: ReturnType<typeof setInterval> | null = null;
 
 const { data: meData, isLoading: meLoading } = useQuery({
     queryKey: ["me"],
@@ -230,6 +238,19 @@ watch(
 watch(currentView, () => {
     activeAccountMessage.value = "";
     accountUpdateMessage.value = "";
+    if (currentView.value !== "details" && detailsCacheSizeInterval) {
+        clearInterval(detailsCacheSizeInterval);
+        detailsCacheSizeInterval = null;
+    }
+});
+
+const detailsCacheSizeLabel = computed(() => {
+    const bytes = detailsCacheSizeBytes.value;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024)
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 });
 
 interface CookiePreview {
@@ -282,6 +303,49 @@ function hasStaleCredentials(user: InstagramUserRecord): boolean {
     );
 }
 
+function clearDetailsCacheInterval(): void {
+    if (!detailsCacheSizeInterval) {
+        return;
+    }
+    clearInterval(detailsCacheSizeInterval);
+    detailsCacheSizeInterval = null;
+}
+
+async function loadCacheEfficiencyForDetails(instagramUserId: string) {
+    detailsCacheLoading.value = true;
+    detailsCacheError.value = "";
+    try {
+        const payload = await api.getAutomationCacheEfficiency(instagramUserId);
+        detailsCacheMetrics.value = payload;
+        detailsCacheSizeBytes.value = payload.cache_size.cache_size_bytes;
+        detailsCacheFileCount.value = payload.cache_size.cache_file_count;
+        detailsCacheUpdatedAt.value = payload.generated_at;
+    } catch (_err) {
+        detailsCacheMetrics.value = null;
+        detailsCacheError.value = "Could not load cache efficiency right now.";
+    } finally {
+        detailsCacheLoading.value = false;
+    }
+}
+
+async function refreshCacheSizeForDetails(instagramUserId: string) {
+    try {
+        const payload = await api.getAutomationCacheSize(instagramUserId);
+        detailsCacheSizeBytes.value = payload.cache_size_bytes;
+        detailsCacheFileCount.value = payload.cache_file_count;
+        detailsCacheUpdatedAt.value = payload.generated_at;
+    } catch {
+        // Best-effort polling endpoint; keep UI stable on transient errors.
+    }
+}
+
+function startDetailsCacheSizePolling(instagramUserId: string) {
+    clearDetailsCacheInterval();
+    detailsCacheSizeInterval = setInterval(() => {
+        void refreshCacheSizeForDetails(instagramUserId);
+    }, 30_000);
+}
+
 async function loadDetails(instagramUserId: string) {
     selectedInstagramUser.value = await api.getInstagramUser(instagramUserId);
     if (selectedInstagramUser.value) {
@@ -301,6 +365,10 @@ async function loadDetails(instagramUserId: string) {
     } finally {
         apiUsageLoading.value = false;
     }
+
+    await loadCacheEfficiencyForDetails(instagramUserId);
+    await refreshCacheSizeForDetails(instagramUserId);
+    startDetailsCacheSizePolling(instagramUserId);
 }
 
 async function openDetails(instagramUserId: string) {
@@ -674,6 +742,82 @@ const discoveryUsername = computed(() => {
                             <p v-else class="text-sm text-slate-500">No tracked API calls yet.</p>
                         </div>
                         <p v-else class="text-sm text-slate-500 mt-3">No tracked API calls yet.</p>
+                    </section>
+
+                    <!-- Cache Efficiency section -->
+                    <section class="mt-6 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-slate-200">Cache Efficiency</h3>
+                                <p class="text-xs text-slate-500 mt-1">Cache hit ratio and current cache footprint for this account.</p>
+                            </div>
+                            <button
+                                class="btn-ghost rounded-lg px-3 py-1.5 text-xs"
+                                :disabled="detailsCacheLoading"
+                                @click="selectedInstagramUser && loadCacheEfficiencyForDetails(selectedInstagramUser.instagram_user_id)"
+                            >
+                                {{ detailsCacheLoading ? "Loading..." : "Refresh" }}
+                            </button>
+                        </div>
+
+                        <p v-if="detailsCacheLoading" class="text-sm text-slate-400 mt-3">Loading cache metrics...</p>
+                        <p v-else-if="detailsCacheError" class="text-sm text-rose-400 mt-3">{{ detailsCacheError }}</p>
+
+                        <div v-else-if="detailsCacheMetrics" class="mt-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                                <div class="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+                                    <p class="text-xs text-slate-500 uppercase tracking-wide">All time efficiency</p>
+                                    <p class="text-sm font-semibold text-emerald-300 mt-0.5">
+                                        {{ detailsCacheMetrics.all_time.efficiency_percent }}%
+                                    </p>
+                                    <p class="text-xs text-slate-500 mt-1">
+                                        {{ detailsCacheMetrics.all_time.cache_hits.toLocaleString() }} hits / {{ detailsCacheMetrics.all_time.total_reads.toLocaleString() }} reads
+                                    </p>
+                                </div>
+                                <div class="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+                                    <p class="text-xs text-slate-500 uppercase tracking-wide">24h efficiency</p>
+                                    <p class="text-sm font-semibold text-cyan-300 mt-0.5">
+                                        {{ detailsCacheMetrics.last_24h.efficiency_percent }}%
+                                    </p>
+                                    <p class="text-xs text-slate-500 mt-1">
+                                        {{ detailsCacheMetrics.last_24h.cache_hits.toLocaleString() }} hits / {{ detailsCacheMetrics.last_24h.total_reads.toLocaleString() }} reads
+                                    </p>
+                                </div>
+                                <div class="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+                                    <p class="text-xs text-slate-500 uppercase tracking-wide">Cache size</p>
+                                    <p class="text-sm font-semibold text-amber-200 mt-0.5">
+                                        {{ detailsCacheSizeLabel }}
+                                    </p>
+                                    <p class="text-xs text-slate-500 mt-1">
+                                        {{ detailsCacheFileCount.toLocaleString() }} files
+                                    </p>
+                                </div>
+                            </div>
+
+                            <p class="text-xs text-slate-500 mb-3">
+                                Cache size auto-refreshes every 30 seconds.
+                                <span v-if="detailsCacheUpdatedAt"> Last updated: {{ detailsCacheUpdatedAt }}</span>
+                            </p>
+
+                            <div v-if="detailsCacheMetrics.per_category.length" class="space-y-2">
+                                <div
+                                    v-for="category in detailsCacheMetrics.per_category"
+                                    :key="category.category"
+                                    class="rounded-xl border border-white/[0.06] p-3 bg-white/[0.02]"
+                                >
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                                        <p class="text-sm font-semibold text-slate-200">{{ category.category }}</p>
+                                        <p class="text-xs text-slate-500">
+                                            {{ category.all_time.efficiency_percent }}% all-time · {{ category.last_24h.efficiency_percent }}% in 24h
+                                        </p>
+                                    </div>
+                                    <p class="text-xs text-slate-500 mt-1.5">
+                                        {{ category.all_time.cache_hits.toLocaleString() }} cache hits, {{ category.all_time.api_calls.toLocaleString() }} API calls
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <p v-else class="text-sm text-slate-500 mt-3">No cache metrics available yet.</p>
                     </section>
 
                     <!-- Update form -->

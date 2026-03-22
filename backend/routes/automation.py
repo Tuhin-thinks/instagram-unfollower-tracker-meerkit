@@ -14,10 +14,13 @@ Endpoints:
   DELETE /api/automation/safelists/<list_type>/<key> — Remove one safelist entry
 """
 
+from datetime import datetime
+from pathlib import Path
 from typing import cast
 
 from flask import Blueprint, jsonify, request
 
+from backend.config import CACHE_DIR
 from backend.routes import get_active_context
 from backend.services import automation_runner, db_service
 from backend.services.account_handler import _build_profile
@@ -34,6 +37,12 @@ from backend.services.instagram_gateway import instagram_gateway
 bp = Blueprint("automation", __name__, url_prefix="/api/automation")
 
 _VALID_LIST_TYPES = {"do_not_follow", "never_unfollow"}
+_READ_USAGE_CATEGORIES = {
+    "user_lookup",
+    "user_data_fetch",
+    "followers_discovery",
+    "following_discovery",
+}
 
 
 def _active_scope() -> tuple[str | None, dict | tuple[dict, int]]:
@@ -43,6 +52,172 @@ def _active_scope() -> tuple[str | None, dict | tuple[dict, int]]:
     return get_active_context(instagram_user_id)
 
 
+def _query_flag(name: str) -> bool:
+    value = (request.args.get(name) or "").strip().lower()
+    return value in {"1", "true", "yes", "y", "on"}
+
+
+def _cache_scope_dir(app_user_id: str, reference_profile_id: str) -> Path:
+    return CACHE_DIR / app_user_id / reference_profile_id
+
+
+def _cache_size_summary(cache_scope_dir: Path) -> dict[str, int]:
+    total_bytes = 0
+    file_count = 0
+    if cache_scope_dir.exists():
+        for entry in cache_scope_dir.rglob("*"):
+            if not entry.is_file():
+                continue
+            try:
+                total_bytes += entry.stat().st_size
+                file_count += 1
+            except OSError:
+                continue
+    return {
+        "cache_size_bytes": total_bytes,
+        "cache_file_count": file_count,
+    }
+
+
+def _cache_efficiency_payload(app_user_id: str, reference_profile_id: str) -> dict:
+    usage_summary = db_service.get_instagram_api_usage_summary(
+        app_user_id=app_user_id,
+        instagram_user_id=reference_profile_id,
+    )
+
+    categories = usage_summary.get("accounts", [{}])[0].get("categories", [])
+    counts_by_category: dict[str, dict[str, int]] = {}
+    for category_entry in categories:
+        category_name = str(category_entry.get("category") or "")
+        all_time_count = int(category_entry.get("all_time_count") or 0)
+        last_24h_count = int(category_entry.get("last_24h_count") or 0)
+        counts_by_category[category_name] = {
+            "all_time_count": all_time_count,
+            "last_24h_count": last_24h_count,
+        }
+
+    per_category: list[dict[str, object]] = []
+    all_time_hits_total = 0
+    all_time_api_total = 0
+    last_24h_hits_total = 0
+    last_24h_api_total = 0
+
+    for category in sorted(_READ_USAGE_CATEGORIES):
+        api_counts = counts_by_category.get(category, {})
+        hit_counts = counts_by_category.get(f"{category}_cache_hit", {})
+
+        api_all_time = int(api_counts.get("all_time_count") or 0)
+        api_last_24h = int(api_counts.get("last_24h_count") or 0)
+        hit_all_time = int(hit_counts.get("all_time_count") or 0)
+        hit_last_24h = int(hit_counts.get("last_24h_count") or 0)
+
+        all_time_reads = api_all_time + hit_all_time
+        last_24h_reads = api_last_24h + hit_last_24h
+        all_time_efficiency = (
+            round((hit_all_time / all_time_reads) * 100, 2)
+            if all_time_reads > 0
+            else 0.0
+        )
+        last_24h_efficiency = (
+            round((hit_last_24h / last_24h_reads) * 100, 2)
+            if last_24h_reads > 0
+            else 0.0
+        )
+
+        per_category.append(
+            {
+                "category": category,
+                "all_time": {
+                    "cache_hits": hit_all_time,
+                    "api_calls": api_all_time,
+                    "total_reads": all_time_reads,
+                    "efficiency_percent": all_time_efficiency,
+                },
+                "last_24h": {
+                    "cache_hits": hit_last_24h,
+                    "api_calls": api_last_24h,
+                    "total_reads": last_24h_reads,
+                    "efficiency_percent": last_24h_efficiency,
+                },
+            }
+        )
+
+        all_time_hits_total += hit_all_time
+        all_time_api_total += api_all_time
+        last_24h_hits_total += hit_last_24h
+        last_24h_api_total += api_last_24h
+
+    all_time_reads_total = all_time_hits_total + all_time_api_total
+    last_24h_reads_total = last_24h_hits_total + last_24h_api_total
+    cache_scope_dir = _cache_scope_dir(app_user_id, reference_profile_id)
+    cache_size = _cache_size_summary(cache_scope_dir)
+
+    return {
+        "generated_at": datetime.now().isoformat(),
+        "instagram_user_id": reference_profile_id,
+        "all_time": {
+            "cache_hits": all_time_hits_total,
+            "api_calls": all_time_api_total,
+            "total_reads": all_time_reads_total,
+            "efficiency_percent": round(
+                (all_time_hits_total / all_time_reads_total) * 100,
+                2,
+            )
+            if all_time_reads_total > 0
+            else 0.0,
+        },
+        "last_24h": {
+            "cache_hits": last_24h_hits_total,
+            "api_calls": last_24h_api_total,
+            "total_reads": last_24h_reads_total,
+            "efficiency_percent": round(
+                (last_24h_hits_total / last_24h_reads_total) * 100,
+                2,
+            )
+            if last_24h_reads_total > 0
+            else 0.0,
+        },
+        "cache_size": {
+            **cache_size,
+            "cache_scope": str(cache_scope_dir),
+        },
+        "per_category": per_category,
+    }
+
+
+@bp.get("/cache-efficiency")
+def get_cache_efficiency():
+    app_user_id, context = _active_scope()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    reference_profile_id: str = instagram_user["instagram_user_id"]
+    return jsonify(_cache_efficiency_payload(app_user_id, reference_profile_id))
+
+
+@bp.get("/cache-size")
+def get_cache_size():
+    app_user_id, context = _active_scope()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    reference_profile_id: str = instagram_user["instagram_user_id"]
+    cache_scope_dir = _cache_scope_dir(app_user_id, reference_profile_id)
+    size_payload = _cache_size_summary(cache_scope_dir)
+    return jsonify(
+        {
+            "generated_at": datetime.now().isoformat(),
+            "instagram_user_id": reference_profile_id,
+            "cache_scope": str(cache_scope_dir),
+            **size_payload,
+        }
+    )
+
+
 # ── Following users ────────────────────────────────────────────────────────────
 
 
@@ -50,9 +225,9 @@ def _active_scope() -> tuple[str | None, dict | tuple[dict, int]]:
 def get_following_users():
     """Fetch the list of accounts the active Instagram profile currently follows.
 
-    This makes a live call to the Instagram API and may take several seconds for
-    large following lists. Results are not cached; the client should avoid
-    hammering this endpoint rapidly.
+    This endpoint is cache-first and uses local cache snapshots for relationship
+    records and profile counts. Set ?force_refresh=1 to bypass cache and fetch
+    fresh data from Instagram.
     """
     app_user_id, context = _active_scope()
     if not app_user_id:
@@ -61,19 +236,30 @@ def get_following_users():
 
     instagram_user = cast(dict, context)
     reference_profile_id: str = instagram_user["instagram_user_id"]
+    force_refresh = _query_flag("force_refresh")
 
     try:
         profile = _build_profile(instagram_user)
-        records = instagram_gateway.get_current_following_v2(
+        following_records = instagram_gateway.get_current_following_v2(
             app_user_id=app_user_id,
             instagram_user_id=reference_profile_id,
             profile=profile,
             caller_service="automation",
             caller_method="get_following_users",
+            force_refresh=force_refresh,
+        )
+        follower_records = instagram_gateway.get_current_followers_v2(
+            app_user_id=app_user_id,
+            instagram_user_id=reference_profile_id,
+            profile=profile,
+            caller_service="automation",
+            caller_method="get_following_users",
+            force_refresh=force_refresh,
         )
     except Exception as exc:
         return jsonify({"error": f"Failed to fetch following list: {exc}"}), 502
 
+    follower_ids = {record.pk_id for record in follower_records}
     users = [
         {
             "user_id": r.pk_id,
@@ -81,10 +267,56 @@ def get_following_users():
             "full_name": r.full_name,
             "is_private": r.is_private,
             "profile_pic_url": r.profile_pic_url,
+            "follows_you": r.pk_id in follower_ids,
+            **_load_following_user_counts(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                profile=profile,
+                user_id=r.pk_id,
+                force_refresh=force_refresh,
+            ),
         }
-        for r in records
+        for r in following_records
     ]
-    return jsonify({"users": users, "total": len(users)})
+    return jsonify(
+        {
+            "users": users,
+            "total": len(users),
+            "followers_total": len(follower_records),
+            "following_total": len(following_records),
+        }
+    )
+
+
+def _load_following_user_counts(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    profile,
+    user_id: str,
+    force_refresh: bool,
+) -> dict[str, int | None]:
+    try:
+        summary = instagram_gateway.get_target_user_data(
+            app_user_id=app_user_id,
+            instagram_user_id=reference_profile_id,
+            profile=profile,
+            target_user_id=user_id,
+            caller_service="automation",
+            caller_method="get_following_users",
+            force_refresh=force_refresh,
+        )
+    except Exception:
+        return {"follower_count": None, "following_count": None}
+
+    follower_count = summary.get("account_followers_count")
+    following_count = summary.get("account_following_count")
+    return {
+        "follower_count": follower_count if isinstance(follower_count, int) else None,
+        "following_count": following_count
+        if isinstance(following_count, int)
+        else None,
+    }
 
 
 # ── Prepare: batch follow ──────────────────────────────────────────────────────

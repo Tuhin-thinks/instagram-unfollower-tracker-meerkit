@@ -55,6 +55,12 @@ def _json_loads(payload: str | None) -> dict | list | None:
         return None
 
 
+def _serialize_json_field(payload: object) -> object:
+    if payload is None or isinstance(payload, (dict, list)):
+        return _json_dumps(payload)
+    return payload
+
+
 def _normalize_prediction_row(row) -> dict | None:
     if not row:
         return None
@@ -1802,6 +1808,8 @@ def update_automation_action(action_id: str, **fields: object) -> None:
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return
+    if "config_json" in updates:
+        updates["config_json"] = _serialize_json_field(updates["config_json"])
     updates["update_date"] = _now_iso()
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     db = get_worker_db()
@@ -1940,6 +1948,8 @@ def update_automation_action_item(item_id: str, **fields: object) -> None:
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return
+    if "result_json" in updates:
+        updates["result_json"] = _serialize_json_field(updates["result_json"])
     updates["update_date"] = _now_iso()
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     db = get_worker_db()

@@ -5,7 +5,7 @@ import PredictionStatusBadge from "../components/prediction/PredictionStatusBadg
 import TaskProgressBar from "../components/prediction/TaskProgressBar.vue";
 import * as api from "../services/api";
 import { useUiTaskState } from "../services/uiTaskState";
-import type { TaskSummary } from "../types/prediction";
+import type { PredictionStatus, TaskSummary } from "../types/prediction";
 
 const props = defineProps<{
     profileId: string;
@@ -95,6 +95,9 @@ const { mutateAsync: terminateTask } = useMutation({
         if (task.source === "scan") {
             return api.cancelScan();
         }
+        if (task.source === "automation") {
+            return api.cancelAutomationAction(task.task_id);
+        }
         return api.cancelPredictionTask(task.task_id);
     },
     onSuccess: async (_, task) => {
@@ -128,17 +131,36 @@ function toPredictionTask(task: TaskSummary) {
     if (typeof task.progress !== "number") {
         return null;
     }
+
+    const status: PredictionStatus = [
+        "queued",
+        "running",
+        "completed",
+        "error",
+        "cancelled",
+    ].includes(task.status)
+        ? (task.status as PredictionStatus)
+        : "running";
+
     return {
         task_id: task.task_id,
         prediction_id: "",
         task_type: task.task_type,
-        status: task.status,
+        status,
         progress: task.progress,
         error: task.error,
         queued_at: task.queued_at || "",
         started_at: task.started_at,
         completed_at: task.completed_at,
     };
+}
+
+function toBadgeStatus(task: TaskSummary): PredictionStatus | "invalid" {
+    return ["queued", "running", "completed", "error", "cancelled"].includes(
+        task.status,
+    )
+        ? (task.status as PredictionStatus)
+        : "invalid";
 }
 
 async function onTerminate(task: TaskSummary) {
@@ -221,7 +243,7 @@ async function onTerminate(task: TaskSummary) {
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <PredictionStatusBadge :status="task.status" />
+                        <PredictionStatusBadge :status="toBadgeStatus(task)" />
                         <button
                             v-if="task.can_cancel"
                             :disabled="terminatingTaskId === task.task_id"

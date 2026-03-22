@@ -21,8 +21,11 @@ import type {
 import type {
   FollowingUsersResponse,
   AutomationAction,
+  AutomationActionsResponse,
   AutomationActionResult,
   SafelistResponse,
+  AutomationCacheEfficiencyResponse,
+  AutomationCacheSizeResponse,
 } from '../types/automation'
 
 const http = axios.create({
@@ -219,7 +222,21 @@ export const getAutomationFollowingUsers = () =>
   http
     .get<FollowingUsersResponse>('/automation/following-users', {
       params: { profile_id: activeInstagramUserId },
-      timeout: 180_000,
+      timeout: 300_000,
+    })
+    .then((r) => r.data)
+
+export const getAutomationCacheEfficiency = (instagramUserId?: string) =>
+  http
+    .get<AutomationCacheEfficiencyResponse>('/automation/cache-efficiency', {
+      params: { profile_id: instagramUserId || activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const getAutomationCacheSize = (instagramUserId?: string) =>
+  http
+    .get<AutomationCacheSizeResponse>('/automation/cache-size', {
+      params: { profile_id: instagramUserId || activeInstagramUserId },
     })
     .then((r) => r.data)
 
@@ -267,6 +284,13 @@ export const cancelAutomationAction = (actionId: string) =>
 export const getAutomationAction = (actionId: string) =>
   http
     .get<AutomationAction>(`/automation/actions/${actionId}`, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const listAutomationActions = () =>
+  http
+    .get<AutomationActionsResponse>('/automation/actions', {
       params: { profile_id: activeInstagramUserId },
     })
     .then((r) => r.data)

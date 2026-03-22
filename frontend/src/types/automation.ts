@@ -4,11 +4,50 @@ export interface FollowingUser {
   full_name: string
   is_private: boolean
   profile_pic_url: string
+  follower_count: number | null
+  following_count: number | null
+  follows_you: boolean
 }
 
 export interface FollowingUsersResponse {
   users: FollowingUser[]
   total: number
+  followers_total: number
+  following_total: number
+}
+
+export interface AutomationCacheWindowMetrics {
+  cache_hits: number
+  api_calls: number
+  total_reads: number
+  efficiency_percent: number
+}
+
+export interface AutomationCacheSizeResponse {
+  generated_at: string
+  instagram_user_id: string
+  cache_scope: string
+  cache_size_bytes: number
+  cache_file_count: number
+}
+
+export interface AutomationCacheCategoryMetrics {
+  category: string
+  all_time: AutomationCacheWindowMetrics
+  last_24h: AutomationCacheWindowMetrics
+}
+
+export interface AutomationCacheEfficiencyResponse {
+  generated_at: string
+  instagram_user_id: string
+  all_time: AutomationCacheWindowMetrics
+  last_24h: AutomationCacheWindowMetrics
+  cache_size: {
+    cache_size_bytes: number
+    cache_file_count: number
+    cache_scope: string
+  }
+  per_category: AutomationCacheCategoryMetrics[]
 }
 
 export type AutomationStatus =
@@ -16,6 +55,7 @@ export type AutomationStatus =
   | 'staged'
   | 'queued'
   | 'running'
+  | 'partial'
   | 'completed'
   | 'error'
   | 'cancelled'
@@ -34,7 +74,7 @@ export interface AutomationAction {
   action_id: string
   app_user_id: string
   reference_profile_id: string
-  action_type: 'batch_follow' | 'batch_unfollow'
+  action_type: AutomationActionType
   status: AutomationStatus
   config: Record<string, unknown> | null
   total_items: number
@@ -48,6 +88,13 @@ export interface AutomationAction {
   create_date: string
   update_date: string
   items_by_status?: Record<string, AutomationActionItem[]>
+}
+
+export type AutomationActionType = 'batch_follow' | 'batch_unfollow'
+
+export interface AutomationActionsResponse {
+  actions: AutomationAction[]
+  total: number
 }
 
 export interface AutomationActionResult {

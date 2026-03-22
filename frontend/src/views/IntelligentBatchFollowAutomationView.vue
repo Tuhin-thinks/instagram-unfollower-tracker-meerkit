@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
     cancelAutomationAction,
     confirmAutomationAction,
     getAutomationAction,
     prepareBatchFollow,
 } from "../services/api";
+import {
+    clearAutomationJob,
+    recoverAutomationJobForType,
+    registerAutomationJob,
+    updateAutomationJob,
+} from "../services/automationJobRegistry";
 import type { AutomationAction, AutomationActionResult } from "../types/automation";
 
 const props = defineProps<{
@@ -77,10 +83,23 @@ type Phase =
 const phase = ref<Phase>("idle");
 const stagedResult = ref<AutomationActionResult | null>(null);
 const currentAction = ref<AutomationAction | null>(null);
+const activeActionLock = ref<AutomationAction | null>(null);
 const actionError = ref<string | null>(null);
 let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const hasCandidates = computed(() => parsedTargets.value.length > 0);
+const hasConflictingAction = computed(
+    () =>
+        !!activeActionLock.value &&
+        ["staged", "queued", "running"].includes(activeActionLock.value.status),
+);
+
+const prepareBlockReason = computed(() => {
+    if (!activeActionLock.value || !hasConflictingAction.value) {
+        return null;
+    }
+    return `Another batch follow action is already ${activeActionLock.value.status}. Action: ${activeActionLock.value.action_id}`;
+});
 
 const runningProgress = computed(() => {
     if (!currentAction.value || !currentAction.value.total_items) return 0;
@@ -92,7 +111,7 @@ const runningProgress = computed(() => {
 });
 
 async function prepare() {
-    if (!hasCandidates.value) return;
+    if (!hasCandidates.value || hasConflictingAction.value) return;
     phase.value = "preparing";
     actionError.value = null;
     try {
@@ -103,6 +122,9 @@ async function prepare() {
             skip_private: !includePrivateAccounts.value,
             skip_no_recent_interaction: respectRecentInteractions.value,
         });
+        const action = await getAutomationAction(result.action_id);
+        registerAutomationJob(action);
+        activeActionLock.value = action;
         stagedResult.value = result;
         phase.value = "staged";
     } catch (err: unknown) {
@@ -119,9 +141,12 @@ async function confirm() {
     phase.value = "confirming";
     actionError.value = null;
     try {
-        await confirmAutomationAction(stagedResult.value.action_id);
+        const action = await confirmAutomationAction(stagedResult.value.action_id);
+        registerAutomationJob(action);
+        activeActionLock.value = action;
+        currentAction.value = action;
         phase.value = "running";
-        schedulePoll(stagedResult.value.action_id);
+        schedulePoll(action.action_id);
     } catch (err: unknown) {
         actionError.value =
             err instanceof Error ? err.message : "Failed to confirm action";
@@ -138,12 +163,26 @@ async function poll(actionId: string) {
     try {
         const action = await getAutomationAction(actionId);
         currentAction.value = action;
-        if (action.status === "completed") {
+
+        if (["staged", "queued", "running"].includes(action.status)) {
+            updateAutomationJob(action.action_id, action.status);
+            activeActionLock.value = action;
+        }
+
+        if (action.status === "completed" || action.status === "partial") {
+            clearAutomationJob(action.action_id);
+            if (activeActionLock.value?.action_id === action.action_id) {
+                activeActionLock.value = null;
+            }
             phase.value = "completed";
         } else if (
             action.status === "error" ||
             action.status === "cancelled"
         ) {
+            clearAutomationJob(action.action_id);
+            if (activeActionLock.value?.action_id === action.action_id) {
+                activeActionLock.value = null;
+            }
             actionError.value = action.error ?? "Action ended unexpectedly";
             phase.value = "error";
         } else {
@@ -167,6 +206,10 @@ async function cancel() {
     } catch {
         // best-effort
     }
+    clearAutomationJob(actionId);
+    if (activeActionLock.value?.action_id === actionId) {
+        activeActionLock.value = null;
+    }
     reset();
 }
 
@@ -180,6 +223,31 @@ function reset() {
     currentAction.value = null;
     actionError.value = null;
 }
+
+async function recoverExistingAction() {
+    try {
+        const action = await recoverAutomationJobForType(
+            props.profileId,
+            "batch_follow",
+        );
+        if (!action) {
+            return;
+        }
+
+        activeActionLock.value = action;
+        currentAction.value = action;
+        if (action.status === "queued" || action.status === "running") {
+            phase.value = "running";
+            schedulePoll(action.action_id);
+        }
+    } catch {
+        // Keep UI interactive on transient backend errors.
+    }
+}
+
+onMounted(() => {
+    void recoverExistingAction();
+});
 
 onUnmounted(() => {
     if (pollTimeout) clearTimeout(pollTimeout);
@@ -376,6 +444,12 @@ function goBack() {
                     <!-- Idle -->
                     <template v-if="phase === 'idle'">
                         <p
+                            v-if="prepareBlockReason"
+                            class="text-xs text-amber-200 rounded-lg bg-amber-500/10 border border-amber-300/25 px-3 py-2 mb-3"
+                        >
+                            {{ prepareBlockReason }}
+                        </p>
+                        <p
                             class="text-xs uppercase tracking-wide text-cyan-100/80"
                         >
                             Preview
@@ -560,9 +634,9 @@ function goBack() {
                         <button
                             class="btn-violet rounded-xl px-4 py-2.5 text-sm font-semibold col-span-2"
                             :class="{
-                                'opacity-50 cursor-not-allowed': !hasCandidates,
+                                'opacity-50 cursor-not-allowed': !hasCandidates || hasConflictingAction,
                             }"
-                            :disabled="!hasCandidates"
+                            :disabled="!hasCandidates || hasConflictingAction"
                             @click="prepare"
                         >
                             Prepare Batch Follow

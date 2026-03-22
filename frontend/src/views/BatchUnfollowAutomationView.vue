@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
     cancelAutomationAction,
     confirmAutomationAction,
@@ -7,6 +7,12 @@ import {
     getAutomationFollowingUsers,
     prepareBatchUnfollow,
 } from "../services/api";
+import {
+    clearAutomationJob,
+    recoverAutomationJobForType,
+    registerAutomationJob,
+    updateAutomationJob,
+} from "../services/automationJobRegistry";
 import type {
     AutomationAction,
     AutomationActionResult,
@@ -36,6 +42,8 @@ const selectedUserIds = ref<string[]>([]);
 const followingLoading = ref(false);
 const followingError = ref<string | null>(null);
 const followingLoaded = ref(false);
+const showOnlyNotFollowingBack = ref(false);
+const followingTotals = ref({ followersTotal: 0, followingTotal: 0 });
 
 // ── Never-unfollow list ────────────────────────────────────────────────
 
@@ -61,6 +69,7 @@ type Phase =
 const phase = ref<Phase>("idle");
 const stagedResult = ref<AutomationActionResult | null>(null);
 const currentAction = ref<AutomationAction | null>(null);
+const activeActionLock = ref<AutomationAction | null>(null);
 const actionError = ref<string | null>(null);
 let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -68,13 +77,18 @@ let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const filteredFollowingList = computed(() => {
     const q = followingSearch.value.trim().toLowerCase();
-    if (!q) return followingList.value;
     return followingList.value.filter(
         (u) =>
+            (!showOnlyNotFollowingBack.value || !u.follows_you) &&
+            (!q ||
             u.username.toLowerCase().includes(q) ||
-            u.full_name.toLowerCase().includes(q),
+            u.full_name.toLowerCase().includes(q)),
     );
 });
+
+const notFollowingBackCount = computed(
+    () => followingList.value.filter((u) => !u.follows_you).length,
+);
 
 function parseUniqueEntries(raw: string) {
     return Array.from(
@@ -104,6 +118,18 @@ const protectedAccounts = computed(() =>
 );
 
 const hasCandidates = computed(() => activeCandidates.value.length > 0);
+const hasConflictingAction = computed(
+    () =>
+        !!activeActionLock.value &&
+        ["staged", "queued", "running"].includes(activeActionLock.value.status),
+);
+
+const prepareBlockReason = computed(() => {
+    if (!activeActionLock.value || !hasConflictingAction.value) {
+        return null;
+    }
+    return `Another batch unfollow action is already ${activeActionLock.value.status}. Action: ${activeActionLock.value.action_id}`;
+});
 
 const isAllFilteredSelected = computed(() => {
     if (!filteredFollowingList.value.length) return false;
@@ -136,6 +162,10 @@ async function loadFollowingList() {
     try {
         const res = await getAutomationFollowingUsers();
         followingList.value = res.users;
+        followingTotals.value = {
+            followersTotal: res.followers_total,
+            followingTotal: res.following_total,
+        };
         followingLoaded.value = true;
     } catch (err: unknown) {
         followingError.value =
@@ -145,6 +175,10 @@ async function loadFollowingList() {
     } finally {
         followingLoading.value = false;
     }
+}
+
+function openInstagramProfile(username: string) {
+    window.open(`https://www.instagram.com/${username}/`, "_blank", "noopener,noreferrer");
 }
 
 function toggleSelectAll() {
@@ -165,7 +199,7 @@ function toggleSelectAll() {
 // ── Prepare ────────────────────────────────────────────────────────────
 
 async function prepare() {
-    if (!hasCandidates.value) return;
+    if (!hasCandidates.value || hasConflictingAction.value) return;
     phase.value = "preparing";
     actionError.value = null;
     try {
@@ -176,6 +210,9 @@ async function prepare() {
             skip_mutual: requireMutualHistoryCheck.value,
             skip_recent: skipRecentFollows.value,
         });
+        const action = await getAutomationAction(result.action_id);
+        registerAutomationJob(action);
+        activeActionLock.value = action;
         stagedResult.value = result;
         phase.value = "staged";
     } catch (err: unknown) {
@@ -194,9 +231,12 @@ async function confirm() {
     phase.value = "confirming";
     actionError.value = null;
     try {
-        await confirmAutomationAction(stagedResult.value.action_id);
+        const action = await confirmAutomationAction(stagedResult.value.action_id);
+        registerAutomationJob(action);
+        activeActionLock.value = action;
+        currentAction.value = action;
         phase.value = "running";
-        schedulePoll(stagedResult.value.action_id);
+        schedulePoll(action.action_id);
     } catch (err: unknown) {
         actionError.value =
             err instanceof Error ? err.message : "Failed to confirm action";
@@ -215,12 +255,26 @@ async function poll(actionId: string) {
     try {
         const action = await getAutomationAction(actionId);
         currentAction.value = action;
-        if (action.status === "completed") {
+
+        if (["staged", "queued", "running"].includes(action.status)) {
+            updateAutomationJob(action.action_id, action.status);
+            activeActionLock.value = action;
+        }
+
+        if (action.status === "completed" || action.status === "partial") {
+            clearAutomationJob(action.action_id);
+            if (activeActionLock.value?.action_id === action.action_id) {
+                activeActionLock.value = null;
+            }
             phase.value = "completed";
         } else if (
             action.status === "error" ||
             action.status === "cancelled"
         ) {
+            clearAutomationJob(action.action_id);
+            if (activeActionLock.value?.action_id === action.action_id) {
+                activeActionLock.value = null;
+            }
             actionError.value =
                 action.error ?? "Action ended unexpectedly";
             phase.value = "error";
@@ -247,6 +301,10 @@ async function cancel() {
     } catch {
         // best-effort
     }
+    clearAutomationJob(actionId);
+    if (activeActionLock.value?.action_id === actionId) {
+        activeActionLock.value = null;
+    }
     reset();
 }
 
@@ -263,8 +321,33 @@ function reset() {
     actionError.value = null;
 }
 
+async function recoverExistingAction() {
+    try {
+        const action = await recoverAutomationJobForType(
+            props.profileId,
+            "batch_unfollow",
+        );
+        if (!action) {
+            return;
+        }
+
+        activeActionLock.value = action;
+        currentAction.value = action;
+        if (action.status === "queued" || action.status === "running") {
+            phase.value = "running";
+            schedulePoll(action.action_id);
+        }
+    } catch {
+        // Keep UI interactive on transient backend errors.
+    }
+}
+
 onUnmounted(() => {
     if (pollTimeout) clearTimeout(pollTimeout);
+});
+
+onMounted(async () => {
+    await recoverExistingAction();
 });
 
 function goBack() {
@@ -414,7 +497,7 @@ const protectedPlaceholder = [
                                 v-if="followingLoaded"
                                 class="text-xs text-slate-400"
                             >
-                                {{ followingList.length }} accounts total
+                                {{ followingTotals.followingTotal || followingList.length }} following • {{ followingTotals.followersTotal }} followers
                             </span>
                         </div>
 
@@ -436,6 +519,24 @@ const protectedPlaceholder = [
                                 class="input-dark"
                                 placeholder="Search by username or name…"
                             />
+
+                            <label
+                                class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 gap-3"
+                            >
+                                <div>
+                                    <p class="text-sm text-slate-200">
+                                        Only show accounts not in my followers
+                                    </p>
+                                    <p class="text-xs text-slate-500 mt-1">
+                                        {{ notFollowingBackCount }} of {{ followingList.length }} accounts do not follow you back.
+                                    </p>
+                                </div>
+                                <input
+                                    v-model="showOnlyNotFollowingBack"
+                                    type="checkbox"
+                                    class="h-4 w-4 rounded accent-rose-400"
+                                />
+                            </label>
 
                             <!-- Select all / deselect all row -->
                             <div
@@ -469,7 +570,7 @@ const protectedPlaceholder = [
                                 <label
                                     v-for="user in filteredFollowingList"
                                     :key="user.user_id"
-                                    class="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-white/5 transition-colors"
+                                    class="flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-white/5 transition-colors"
                                 >
                                     <input
                                         type="checkbox"
@@ -497,7 +598,34 @@ const protectedPlaceholder = [
                                         >
                                             {{ user.full_name }}
                                         </p>
+                                        <div
+                                            class="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-300"
+                                        >
+                                            <span
+                                                class="rounded-full border border-white/10 bg-white/5 px-2 py-1"
+                                            >
+                                                Followers: {{ user.follower_count ?? "--" }}
+                                            </span>
+                                            <span
+                                                class="rounded-full border border-white/10 bg-white/5 px-2 py-1"
+                                            >
+                                                Following: {{ user.following_count ?? "--" }}
+                                            </span>
+                                            <span
+                                                :class="user.follows_you ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-amber-400/30 bg-amber-400/10 text-amber-200'"
+                                                class="rounded-full border px-2 py-1"
+                                            >
+                                                {{ user.follows_you ? "Follows you" : "Not in followers" }}
+                                            </span>
+                                        </div>
                                     </div>
+                                    <button
+                                        type="button"
+                                        class="btn-ghost rounded-lg px-3 py-1.5 text-xs font-medium self-center"
+                                        @click.prevent="openInstagramProfile(user.username)"
+                                    >
+                                        View
+                                    </button>
                                 </label>
 
                                 <p
@@ -616,6 +744,12 @@ const protectedPlaceholder = [
                 >
                     <!-- Idle -->
                     <template v-if="phase === 'idle'">
+                        <p
+                            v-if="prepareBlockReason"
+                            class="text-xs text-amber-200 rounded-lg bg-amber-500/10 border border-amber-300/25 px-3 py-2 mb-3"
+                        >
+                            {{ prepareBlockReason }}
+                        </p>
                         <p
                             class="text-xs uppercase tracking-wide text-rose-100/85"
                         >
@@ -807,9 +941,9 @@ const protectedPlaceholder = [
                         <button
                             class="btn-danger rounded-xl px-4 py-2.5 text-sm font-semibold col-span-2"
                             :class="{
-                                'opacity-50 cursor-not-allowed': !hasCandidates,
+                                'opacity-50 cursor-not-allowed': !hasCandidates || hasConflictingAction,
                             }"
-                            :disabled="!hasCandidates"
+                            :disabled="!hasCandidates || hasConflictingAction"
                             @click="prepare"
                         >
                             Prepare Batch Unfollow

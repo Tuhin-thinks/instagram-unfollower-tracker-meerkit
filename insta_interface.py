@@ -359,7 +359,6 @@ def _extract_user_summary(
     unfollow_signal_followers_threshold: int = 10000,
 ) -> dict[str, object]:
     profile_query_data = response_payload["data"]
-    pprint.pprint(profile_query_data)
     user_data = profile_query_data["user"]
     friendship_status = user_data.get("friendship_status") or {}
     me_following_account = friendship_status.get("following", False)
