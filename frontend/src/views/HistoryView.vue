@@ -2,12 +2,15 @@
 import { ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import FollowerCard from '../components/FollowerCard.vue'
+import AnalyticsChart from '../components/AnalyticsChart.vue'
 import * as api from '../services/api'
 import type { DiffResult } from '../types/follower'
 
 const props = defineProps<{
   profileId: string
 }>()
+
+const activeTab = ref<'history' | 'analytics'>('history')
 
 const { data: history, isLoading } = useQuery({
   queryKey: ['history', props.profileId],
@@ -37,48 +40,82 @@ function formatDate(iso: string) {
   <div class="fade-in">
     <h2 class="text-xl font-bold font-display text-gradient mb-5">Scan History</h2>
 
-    <!-- Loading -->
-    <div v-if="isLoading" class="space-y-3">
-      <div v-for="i in 4" :key="i" class="h-16 bg-[#16213a] rounded-xl border border-white/[0.06] shimmer" />
-    </div>
-
-    <!-- Empty -->
-    <div v-else-if="!history?.length" class="text-center py-16 text-slate-500">
-      <p class="text-2xl mb-2">📋</p>
-      <p class="font-medium text-slate-400">No scans yet</p>
-      <p class="text-sm mt-1">Completed scans will appear here.</p>
-    </div>
-
-    <!-- Scan list -->
-    <div v-else class="grid gap-3">
-      <div
-        v-for="scan in history"
-        :key="scan.scan_id"
-        class="bg-[#16213a] rounded-xl border border-white/[0.07] px-5 py-4 flex items-center justify-between gap-4 card-hover transition-all"
+    <!-- Tab buttons -->
+    <div class="flex gap-2 mb-6 border-b border-white/[0.1]">
+      <button
+        @click="activeTab = 'history'"
+        :class="[
+          'px-4 py-2 font-medium text-sm transition-colors border-b-2',
+          activeTab === 'history'
+            ? 'text-violet-400 border-violet-400'
+            : 'text-slate-400 border-transparent hover:text-slate-300'
+        ]"
       >
-        <div class="min-w-0">
-          <p class="text-sm font-semibold text-slate-200">
-            {{ formatDate(scan.timestamp) }}
-          </p>
-          <p class="text-xs text-slate-500 mt-0.5">
-            {{ scan.follower_count.toLocaleString() }} followers · {{ scan.scan_id }}
-          </p>
-        </div>
+        History List
+      </button>
+      <button
+        @click="activeTab = 'analytics'"
+        :class="[
+          'px-4 py-2 font-medium text-sm transition-colors border-b-2',
+          activeTab === 'analytics'
+            ? 'text-violet-400 border-violet-400'
+            : 'text-slate-400 border-transparent hover:text-slate-300'
+        ]"
+      >
+        Analytics
+      </button>
+    </div>
 
-        <button
-          v-if="scan.diff_id"
-          :disabled="loadingDiffId === scan.diff_id"
-          class="shrink-0 text-sm text-violet-400 hover:text-violet-300 font-medium px-3 py-1.5 rounded-lg hover:bg-violet-500/10 disabled:opacity-50 transition-colors"
-          @click="viewDiff(scan.diff_id!)"
-        >
-          <span
-            v-if="loadingDiffId === scan.diff_id"
-            class="inline-block w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mr-1"
-          />
-          View diff
-        </button>
-        <span v-else class="shrink-0 text-xs text-slate-600 italic">No previous scan</span>
+    <!-- History tab -->
+    <div v-if="activeTab === 'history'">
+      <!-- Loading -->
+      <div v-if="isLoading" class="space-y-3">
+        <div v-for="i in 4" :key="i" class="h-16 bg-[#16213a] rounded-xl border border-white/[0.06] shimmer" />
       </div>
+
+      <!-- Empty -->
+      <div v-else-if="!history?.length" class="text-center py-16 text-slate-500">
+        <p class="text-2xl mb-2">📋</p>
+        <p class="font-medium text-slate-400">No scans yet</p>
+        <p class="text-sm mt-1">Completed scans will appear here.</p>
+      </div>
+
+      <!-- Scan list -->
+      <div v-else class="grid gap-3">
+        <div
+          v-for="scan in history"
+          :key="scan.scan_id"
+          class="bg-[#16213a] rounded-xl border border-white/[0.07] px-5 py-4 flex items-center justify-between gap-4 card-hover transition-all"
+        >
+          <div class="min-w-0">
+            <p class="text-sm font-semibold text-slate-200">
+              {{ formatDate(scan.timestamp) }}
+            </p>
+            <p class="text-xs text-slate-500 mt-0.5">
+              {{ scan.follower_count.toLocaleString() }} followers · {{ scan.scan_id }}
+            </p>
+          </div>
+
+          <button
+            v-if="scan.diff_id"
+            :disabled="loadingDiffId === scan.diff_id"
+            class="shrink-0 text-sm text-violet-400 hover:text-violet-300 font-medium px-3 py-1.5 rounded-lg hover:bg-violet-500/10 disabled:opacity-50 transition-colors"
+            @click="viewDiff(scan.diff_id!)"
+          >
+            <span
+              v-if="loadingDiffId === scan.diff_id"
+              class="inline-block w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mr-1"
+            />
+            View diff
+          </button>
+          <span v-else class="shrink-0 text-xs text-slate-600 italic">No previous scan</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analytics tab -->
+    <div v-if="activeTab === 'analytics'">
+      <AnalyticsChart :profile-id="profileId" />
     </div>
 
     <!-- Diff detail modal -->

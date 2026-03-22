@@ -1,10 +1,10 @@
 from typing import cast
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, request
 
 from backend.routes import get_active_context
 from backend.services import persistence
-from backend.services.db_service import get_scan_history
+from backend.services.db_service import get_scan_analytics, get_scan_history
 
 bp = Blueprint("history", __name__, url_prefix="/api")
 
@@ -19,6 +19,22 @@ def history():
     instagram_user = cast(dict, context)
 
     return jsonify(get_scan_history(instagram_user["instagram_user_id"]))
+
+
+@bp.get("/scan-analytics")
+def scan_analytics():
+    app_user_id, context = get_active_context()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    try:
+        days = int(request.args.get("days", 30))
+    except (ValueError, TypeError):
+        days = 30
+
+    return jsonify(get_scan_analytics(instagram_user["instagram_user_id"], days=days))
 
 
 @bp.get("/diff/latest")

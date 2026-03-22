@@ -558,6 +558,68 @@ def get_scan_history(reference_profile_id: str) -> list[dict]:
         return history
 
 
+def get_scan_analytics(reference_profile_id: str, days: int = 30) -> list[dict]:
+    """
+    Return daily aggregated analytics for scan history.
+    Groups scans by day and returns: date, new_followers, unfollowers, total_followers.
+
+    Returns list of dicts with:
+    - date: ISO date string (YYYY-MM-DD)
+    - new_followers: sum of new followers for the day
+    - unfollowers: sum of unfollowers for the day
+    - total_followers: total follower count from the last scan of the day
+
+    Args:
+        reference_profile_id: The Instagram user ID to query.
+        days: Number of past days to include. Capped at 30. Defaults to 30.
+    """
+    days = min(max(1, int(days)), 30)
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+
+        # Get daily aggregates with the last scan_id of each day
+        cursor.execute(
+            """
+            SELECT 
+                DATE(sh.scan_time) as date,
+                MAX(sh.scan_id) as last_scan_id,
+                COALESCE(SUM(dr.follower_count), 0) as new_followers,
+                COALESCE(SUM(dr.unfollower_count), 0) as unfollowers
+            FROM scan_history sh
+            LEFT JOIN diff_records dr ON sh.scan_id = dr.current_scan_id
+            WHERE sh.reference_profile_id = ?
+              AND DATE(sh.scan_time) >= DATE('now', ? || ' days')
+            GROUP BY DATE(sh.scan_time)
+            ORDER BY date DESC
+            """,
+            (reference_profile_id, f"-{days}"),
+        )
+
+        daily_data = cursor.fetchall()
+        analytics = []
+
+        for row in daily_data:
+            # Get total followers from the last scan of this day
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM scanned_data WHERE scan_id = ?",
+                (row["last_scan_id"],),
+            )
+            count_result = cursor.fetchone()
+            total_followers = count_result["count"] if count_result else 0
+
+            analytics.append(
+                {
+                    "date": row["date"],
+                    "new_followers": row["new_followers"],
+                    "unfollowers": row["unfollowers"],
+                    "total_followers": total_followers,
+                }
+            )
+
+        return analytics
+
+
 def get_latest_scanned_profile_ids(
     app_user_id: str, reference_profile_id: str
 ) -> set[str]:
