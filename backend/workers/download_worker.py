@@ -1,9 +1,8 @@
 import threading
-import time
 import traceback
 from typing import Any, cast
 
-from backend.config import IMAGE_DOWNLOAD_DELAY_SECONDS
+from backend.config import MAX_IMAGE_DOWNLOAD_WORKERS
 from backend.extensions import image_download_queue
 from backend.services import downloader
 from backend.services.db_service import (
@@ -13,15 +12,18 @@ from backend.services.db_service import (
 )
 
 _worker_lock = threading.Lock()
-_worker_thread: threading.Thread | None = None
+_worker_threads: list[threading.Thread] = []
 
 
 def start_download_worker() -> None:
-    global _worker_thread
+    global _worker_threads
 
     with _worker_lock:
-        if _worker_thread and _worker_thread.is_alive():
-            print("[Download worker] already running.")
+        _worker_threads = [thread for thread in _worker_threads if thread.is_alive()]
+        if len(_worker_threads) >= MAX_IMAGE_DOWNLOAD_WORKERS:
+            print(
+                f"[Download worker] already running ({len(_worker_threads)}/{MAX_IMAGE_DOWNLOAD_WORKERS})."
+            )
             return
 
     def _run():
@@ -60,7 +62,13 @@ def start_download_worker() -> None:
         print("[Download worker] received shutdown signal, exiting...")
         close_worker_db()
 
-    _worker_thread = threading.Thread(target=_run, daemon=True, name="download-worker")
-    _worker_thread.start()
+    workers_to_start = MAX_IMAGE_DOWNLOAD_WORKERS - len(_worker_threads)
+    for _ in range(workers_to_start):
+        worker_name = f"download-worker-{len(_worker_threads) + 1}"
+        thread = threading.Thread(target=_run, daemon=True, name=worker_name)
+        thread.start()
+        _worker_threads.append(thread)
 
-    print("[Download worker] started.")
+    print(
+        f"[Download worker] started {workers_to_start} worker(s). Total: {len(_worker_threads)}"
+    )
