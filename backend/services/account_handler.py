@@ -1,6 +1,6 @@
 import math
 import re
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
@@ -465,22 +465,40 @@ def _compute_historical_reference(
     }
 
 
-def compute_followback_chances(
+@dataclass
+class FollowbackComputationContext:
+    app_user_id: str
+    reference_profile_id: str
+    target_profile_id: str
+    include_overlap: bool
+    target_profile: dict | None
+    metadata_features: dict[str, object]
+    latest_follower_ids: set[str]
+    target_followers: set[str]
+    target_following: set[str]
+    overlap_followers: int
+    overlap_following: int
+    feature_breakdown: dict[str, object]
+
+
+@dataclass
+class FollowbackMathResult:
+    probability: float
+    confidence: float
+    reasons: list[str]
+    historical_reference: dict[str, float | int]
+
+
+def _load_followback_computation_context(
     pk_id: str,
     reference_profile_id: str,
-    app_user_id: str | None = None,
-    metadata: dict[str, object] | None = None,
-    include_overlap: bool = True,
-):
-    """Compute follow-back probability for one target user using cached profile data."""
-    if not app_user_id:
-        raise ValueError("app_user_id is required to compute followback chances")
-
+    app_user_id: str,
+    metadata: dict[str, object] | None,
+    include_overlap: bool,
+) -> FollowbackComputationContext:
     target_profile = db_service.get_target_profile(
         app_user_id, reference_profile_id, pk_id
     )
-
-    # Only load relationship data if we'll use overlap scoring
     if include_overlap:
         latest_follower_ids = db_service.get_latest_scanned_profile_ids(
             app_user_id, reference_profile_id
@@ -496,11 +514,7 @@ def compute_followback_chances(
         target_followers = set()
         target_following = set()
 
-    score = _logit(0.28)
-    confidence = 0.24
-    reasons: list[str] = []
     metadata_features = _metadata_feature_subset(metadata)
-
     overlap_followers = len(target_followers & latest_follower_ids)
     overlap_following = len(target_following & latest_follower_ids)
     feature_breakdown = _build_feature_breakdown(
@@ -513,6 +527,31 @@ def compute_followback_chances(
         overlap_following=overlap_following,
     )
 
+    return FollowbackComputationContext(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=pk_id,
+        include_overlap=include_overlap,
+        target_profile=target_profile,
+        metadata_features=metadata_features,
+        latest_follower_ids=latest_follower_ids,
+        target_followers=target_followers,
+        target_following=target_following,
+        overlap_followers=overlap_followers,
+        overlap_following=overlap_following,
+        feature_breakdown=feature_breakdown,
+    )
+
+
+def _calculate_followback_math(
+    context: FollowbackComputationContext,
+) -> FollowbackMathResult:
+    score = _logit(0.28)
+    confidence = 0.24
+    reasons: list[str] = []
+    ratio_probability_cap: float | None = None
+
+    target_profile = context.target_profile
     if target_profile:
         confidence += 0.14
         if target_profile.get("being_followed_by_account"):
@@ -560,7 +599,21 @@ def compute_followback_chances(
                     "Very low following-to-follower ratio reduces follow-back likelihood"
                 )
 
-    mutual_followers_count = _as_int(metadata_features.get("mutual_followers_count"))
+            raw_ratio = _safe_ratio(following_count, follower_count)
+            if raw_ratio >= 3.0 and not target_profile.get("being_followed_by_account"):
+                # Guardrail: extreme following/follower ratios should be treated as a
+                # strong negative for follow-back intent.
+                extreme_ratio_penalty = min(2.4, 1.15 + (raw_ratio - 3.0) * 0.7)
+                score -= extreme_ratio_penalty
+                confidence += 0.05
+                reasons.append(
+                    "Extremely high following-to-follower ratio strongly lowers follow-back likelihood"
+                )
+                ratio_probability_cap = 0.1 if raw_ratio >= 5.0 else 0.18
+
+    mutual_followers_count = _as_int(
+        context.metadata_features.get("mutual_followers_count")
+    )
     if isinstance(mutual_followers_count, int) and mutual_followers_count > 0:
         # Keep mutuals as a weak supporting feature rather than a dominant signal.
         score += min(0.22, mutual_followers_count * 0.02)
@@ -577,12 +630,12 @@ def compute_followback_chances(
         score += min(0.12, mutual_to_follower_ratio * 1.2)
         reasons.append("Mutual follower ratio adds slight audience overlap context")
 
-    media_count = _as_int(metadata_features.get("media_count"))
+    media_count = _as_int(context.metadata_features.get("media_count"))
     if isinstance(media_count, int) and media_count >= 1000:
         score -= 0.16
         reasons.append("Very high media volume slightly lowers follow-back odds")
 
-    category = (_as_str(metadata_features.get("category")) or "").lower()
+    category = (_as_str(context.metadata_features.get("category")) or "").lower()
     if category and any(
         token in category
         for token in ("artist", "public figure", "creator", "celebrity", "musician")
@@ -590,48 +643,47 @@ def compute_followback_chances(
         score -= 0.18
         reasons.append("Public-figure style categories reduce follow-back odds")
 
-    if metadata_features.get("is_professional_account"):
+    if context.metadata_features.get("is_professional_account"):
         score -= 0.14
         reasons.append("Professional accounts are slightly less likely to follow back")
 
-    biography = _as_str(metadata_features.get("biography")) or ""
+    biography = _as_str(context.metadata_features.get("biography")) or ""
     if biography and len(biography) >= 80:
         confidence += 0.03
 
-    if metadata_features.get("has_highlight_reels"):
+    if context.metadata_features.get("has_highlight_reels"):
         confidence += 0.02
 
-    if include_overlap:
-        if overlap_followers:
-            score += min(0.5, overlap_followers * 0.05)
+    if context.include_overlap:
+        if context.overlap_followers:
+            score += min(0.5, context.overlap_followers * 0.05)
             confidence += 0.1
             reasons.append("Target followers overlap with the active audience")
-        if overlap_following:
-            score += min(0.42, overlap_following * 0.04)
+        if context.overlap_following:
+            score += min(0.42, context.overlap_following * 0.04)
             confidence += 0.08
             reasons.append("Target following overlaps with the active audience")
 
         overlap_followers_ratio = _safe_ratio(
-            overlap_followers, len(latest_follower_ids)
+            context.overlap_followers, len(context.latest_follower_ids)
         )
         if overlap_followers_ratio >= 0.01:
             score += min(0.35, overlap_followers_ratio * 5.0)
 
         overlap_following_ratio = _safe_ratio(
-            overlap_following, len(latest_follower_ids)
+            context.overlap_following, len(context.latest_follower_ids)
         )
         if overlap_following_ratio >= 0.01:
             score += min(0.28, overlap_following_ratio * 4.0)
 
-        if target_followers or target_following:
+        if context.target_followers or context.target_following:
             confidence += 0.16
 
-    graph_fetch_status = feature_breakdown["graph_fetch_status"]
     probability = _sigmoid(score)
     historical_reference = _compute_historical_reference(
-        app_user_id=app_user_id,
-        reference_profile_id=reference_profile_id,
-        feature_breakdown=feature_breakdown,
+        app_user_id=context.app_user_id,
+        reference_profile_id=context.reference_profile_id,
+        feature_breakdown=context.feature_breakdown,
     )
     history_weight = min(
         0.5,
@@ -641,6 +693,11 @@ def compute_followback_chances(
         probability * (1 - history_weight)
         + float(historical_reference["calibrated_probability"]) * history_weight
     )
+    if ratio_probability_cap is not None:
+        probability = min(probability, ratio_probability_cap)
+        reasons.append(
+            "Extreme following-to-follower ratio guardrail capped this prediction"
+        )
     if history_weight > 0:
         reasons.append(
             "Historical confirmed outcomes were used to calibrate this score"
@@ -655,34 +712,66 @@ def compute_followback_chances(
             "Limited data available; prediction based on baseline heuristics"
         )
 
+    return FollowbackMathResult(
+        probability=probability,
+        confidence=confidence,
+        reasons=reasons,
+        historical_reference=historical_reference,
+    )
+
+
+def compute_followback_chances(
+    pk_id: str,
+    reference_profile_id: str,
+    app_user_id: str | None = None,
+    metadata: dict[str, object] | None = None,
+    include_overlap: bool = True,
+):
+    """Compute follow-back probability for one target user using cached profile data."""
+    if not app_user_id:
+        raise ValueError("app_user_id is required to compute followback chances")
+    context = _load_followback_computation_context(
+        pk_id=pk_id,
+        reference_profile_id=reference_profile_id,
+        app_user_id=app_user_id,
+        metadata=metadata,
+        include_overlap=include_overlap,
+    )
+    math_result = _calculate_followback_math(context)
+
     # Compute state flags
+    graph_fetch_status = context.feature_breakdown["graph_fetch_status"]
     overlap_data_fetched = graph_fetch_status == "ready"
-    overlap_available = include_overlap
-    overlap_scoring_used = include_overlap
-    ambiguous_probability = 0.45 <= probability <= 0.65
+    overlap_available = context.include_overlap
+    overlap_scoring_used = context.include_overlap
+    ambiguous_probability = 0.45 <= math_result.probability <= 0.65
     can_fetch_overlap = not overlap_data_fetched
 
     return {
         "target_profile_id": pk_id,
-        "target_username": target_profile.get("username") if target_profile else None,
-        "followback_probability": probability,
-        "confidence": confidence,
-        "matched_followers_count": overlap_followers,
-        "matched_following_count": overlap_following,
+        "target_username": context.target_profile.get("username")
+        if context.target_profile
+        else None,
+        "followback_probability": math_result.probability,
+        "confidence": math_result.confidence,
+        "matched_followers_count": context.overlap_followers,
+        "matched_following_count": context.overlap_following,
         "graph_fetch_status": graph_fetch_status,
-        "used_cached_followers": bool(target_followers),
-        "used_cached_following": bool(target_following),
+        "used_cached_followers": bool(context.target_followers),
+        "used_cached_following": bool(context.target_following),
         "used_fresh_fetch": False,
-        "statistical_reference_count": historical_reference["sample_count"],
-        "statistical_reference_rate": historical_reference["calibrated_probability"],
-        "global_historical_rate": historical_reference["global_rate"],
+        "statistical_reference_count": math_result.historical_reference["sample_count"],
+        "statistical_reference_rate": math_result.historical_reference[
+            "calibrated_probability"
+        ],
+        "global_historical_rate": math_result.historical_reference["global_rate"],
         "overlap_data_fetched": overlap_data_fetched,
         "overlap_scoring_used": overlap_scoring_used,
         "overlap_available": overlap_available,
         "ambiguous_probability": ambiguous_probability,
         "can_fetch_overlap": can_fetch_overlap,
-        "feature_breakdown": feature_breakdown,
-        "reasons": reasons,
+        "feature_breakdown": context.feature_breakdown,
+        "reasons": math_result.reasons,
     }
 
 
