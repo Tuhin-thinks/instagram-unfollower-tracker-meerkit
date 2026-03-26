@@ -89,6 +89,7 @@ const scanCancelled = computed(() => scanStatus.value?.status === "cancelled");
 
 // ── Tab state ──────────────────────────────────────────────────────────────
 const activeTab = ref<"new_followers" | "unfollowers">("new_followers");
+const exportMessage = ref("");
 
 const tabItems = computed<FollowerRecord[]>(() => {
     if (!diff.value) return [];
@@ -122,9 +123,58 @@ const topUsageCategories = computed<InstagramApiUsageCategorySummary[]>(() =>
     (activeAccountUsage.value?.categories || []).slice(0, 4),
 );
 
+const unfollowerUsernames = computed(() =>
+    (diff.value?.unfollowers || [])
+        .map((item) => item.username?.trim())
+        .filter((name): name is string => Boolean(name)),
+);
+
+function buildUsernameListContent(items: string[]) {
+    return `${items.join("\n")}\n`;
+}
+
+async function copyUnfollowers() {
+    if (!unfollowerUsernames.value.length) {
+        exportMessage.value = "No unfollower usernames available to copy.";
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(
+            buildUsernameListContent(unfollowerUsernames.value),
+        );
+        exportMessage.value = `Copied ${unfollowerUsernames.value.length} usernames.`;
+    } catch {
+        exportMessage.value = "Clipboard copy failed. Please check browser permissions.";
+    }
+}
+
+function downloadUnfollowersTxt() {
+    if (!unfollowerUsernames.value.length) {
+        exportMessage.value = "No unfollower usernames available to export.";
+        return;
+    }
+
+    const blob = new Blob([buildUsernameListContent(unfollowerUsernames.value)], {
+        type: "text/plain;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `unfollowers_${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    exportMessage.value = `Downloaded ${unfollowerUsernames.value.length} usernames.`;
+}
+
 function formatDate(iso: string | null | undefined) {
     if (!iso) return "Never";
     return new Date(iso).toLocaleString();
+}
+
+function handleLinkedAccountsSaved() {
+    queryClient.invalidateQueries({ queryKey: ["diff", "latest", props.profileId] });
 }
 </script>
 
@@ -248,6 +298,29 @@ function formatDate(iso: string | null | undefined) {
             </button>
         </div>
 
+        <div
+            v-if="activeTab === 'unfollowers'"
+            class="mb-5 flex flex-wrap items-center gap-2"
+        >
+            <button
+                class="btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold"
+                :disabled="!unfollowerUsernames.length"
+                @click="copyUnfollowers"
+            >
+                Copy Usernames
+            </button>
+            <button
+                class="btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold"
+                :disabled="!unfollowerUsernames.length"
+                @click="downloadUnfollowersTxt"
+            >
+                Download TXT
+            </button>
+            <p v-if="exportMessage" class="text-xs text-slate-400">
+                {{ exportMessage }}
+            </p>
+        </div>
+
         <!-- Empty tab state -->
         <div v-if="tabItems.length === 0" class="text-center py-14 text-slate-500">
             <p class="text-xl mb-2">
@@ -270,6 +343,8 @@ function formatDate(iso: string | null | undefined) {
                 :key="follower.pk_id"
                 :follower="follower"
                 :profile-id="props.profileId"
+                :show-linked-accounts-action="activeTab === 'unfollowers'"
+                @linked-accounts-saved="handleLinkedAccountsSaved"
             />
         </div>
     </div>

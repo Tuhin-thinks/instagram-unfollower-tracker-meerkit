@@ -26,6 +26,8 @@ import type {
   SafelistResponse,
   AutomationCacheEfficiencyResponse,
   AutomationCacheSizeResponse,
+  AlternativeAccountLinksResponse,
+  AddAlternativeAccountLinksResponse,
 } from '../types/automation'
 
 const http = axios.create({
@@ -323,4 +325,39 @@ export const removeFromAutomationSafelist = (
     .delete(`/automation/safelists/${listType}/${encodeURIComponent(identityKey)}`, {
       params: { profile_id: activeInstagramUserId },
     })
+    .then((r) => r.data)
+
+export const getAlternativeAccountLinks = (primaryIdentityKey?: string) =>
+  http
+    .get<AlternativeAccountLinksResponse>('/automation/alternative-account-links', {
+      params: {
+        profile_id: activeInstagramUserId,
+        ...(primaryIdentityKey ? { primary_identity_key: primaryIdentityKey } : {}),
+      },
+    })
+    .then((r) => r.data)
+
+export const addAlternativeAccountLinks = (payload: {
+  primary_account: string
+  alternative_accounts: string[]
+  linkedin_accounts?: string[]
+  trigger_discovery?: boolean
+}) =>
+  http
+    .post<AddAlternativeAccountLinksResponse>('/automation/alternative-account-links', payload, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const removeAlternativeAccountLink = (
+  primaryIdentityKey: string,
+  altIdentityKey: string,
+) =>
+  http
+    .delete(
+      `/automation/alternative-account-links/${encodeURIComponent(primaryIdentityKey)}/${encodeURIComponent(altIdentityKey)}`,
+      {
+        params: { profile_id: activeInstagramUserId },
+      },
+    )
     .then((r) => r.data)

@@ -110,6 +110,24 @@ const canFetchOverlap = computed(() => {
     return payload?.can_fetch_overlap ?? false;
 });
 
+const altFollowbackAssessment = computed(() => {
+    const payload = prediction.value?.result_payload as {
+        alt_followback_assessment?: {
+            is_alt_account_following_you?: boolean;
+            matched_alt_usernames?: string[];
+        };
+    } | null;
+    return payload?.alt_followback_assessment ?? null;
+});
+
+const matchedAltUsernamesLabel = computed(() => {
+    const usernames = altFollowbackAssessment.value?.matched_alt_usernames;
+    if (!Array.isArray(usernames) || !usernames.length) {
+        return "";
+    }
+    return usernames.slice(0, 3).join(", ");
+});
+
 const showNeedsOverlapData = computed(() => {
     return ambiguousProbability.value && canFetchOverlap.value;
 });
@@ -450,6 +468,18 @@ async function submitFeedback() {
                         </p>
                         <p class="text-[10px] text-slate-500 mt-0.5">
                             user id: {{ prediction.target_profile_id || "--" }}
+                        </p>
+                        <p
+                            v-if="altFollowbackAssessment?.is_alt_account_following_you"
+                            class="mt-1 inline-flex items-center px-2 py-1 rounded-full text-[11px] font-semibold border bg-amber-500/15 text-amber-300 border-amber-500/30"
+                        >
+                            Alt acc follows you
+                            <span
+                                v-if="matchedAltUsernamesLabel"
+                                class="ml-1 text-amber-200/80 font-normal"
+                            >
+                                ({{ matchedAltUsernamesLabel }})
+                            </span>
                         </p>
                     </div>
                 </div>

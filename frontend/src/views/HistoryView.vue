@@ -21,11 +21,13 @@ const { data: history, isLoading } = useQuery({
 
 const selectedDiff = ref<DiffResult | null>(null)
 const loadingDiffId = ref<string | null>(null)
+const modalExportMessage = ref('')
 
 async function viewDiff(diffId: string) {
   loadingDiffId.value = diffId
   try {
     selectedDiff.value = await api.getDiff(diffId)
+    modalExportMessage.value = ''
   } finally {
     loadingDiffId.value = null
   }
@@ -33,6 +35,58 @@ async function viewDiff(diffId: string) {
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString()
+}
+
+function currentUnfollowerUsernames() {
+  return (selectedDiff.value?.unfollowers || [])
+    .map((item) => item.username?.trim())
+    .filter((name): name is string => Boolean(name))
+}
+
+function usernamesToText(usernames: string[]) {
+  return `${usernames.join('\n')}\n`
+}
+
+async function copyUnfollowersFromModal() {
+  const usernames = currentUnfollowerUsernames()
+  if (!usernames.length) {
+    modalExportMessage.value = 'No unfollower usernames available to copy.'
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(usernamesToText(usernames))
+    modalExportMessage.value = `Copied ${usernames.length} usernames.`
+  } catch {
+    modalExportMessage.value = 'Clipboard copy failed. Please check browser permissions.'
+  }
+}
+
+function downloadUnfollowersFromModal() {
+  const usernames = currentUnfollowerUsernames()
+  if (!usernames.length) {
+    modalExportMessage.value = 'No unfollower usernames available to export.'
+    return
+  }
+  const blob = new Blob([usernamesToText(usernames)], {
+    type: 'text/plain;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `unfollowers_${new Date().toISOString().slice(0, 10)}.txt`
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(url)
+  modalExportMessage.value = `Downloaded ${usernames.length} usernames.`
+}
+
+async function handleLinkedAccountsSaved() {
+  const diffId = selectedDiff.value?.diff_id
+  if (!diffId) {
+    return
+  }
+  selectedDiff.value = await api.getDiff(diffId)
 }
 </script>
 
@@ -126,7 +180,7 @@ function formatDate(iso: string) {
         @click.self="selectedDiff = null"
       >
         <div
-          class="bg-[#16213a] border border-white/[0.08] rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/60"
+          class="bg-[#16213a] border border-white/[0.08] rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/60"
         >
           <!-- Modal header -->
           <div
@@ -176,7 +230,24 @@ function formatDate(iso: string) {
 
             <!-- Unfollowers list -->
             <template v-if="selectedDiff.unfollowers.length">
-              <h4 class="text-sm font-semibold text-slate-300 mb-3">Unfollowers</h4>
+              <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h4 class="text-sm font-semibold text-slate-300">Unfollowers</h4>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    class="btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    @click="copyUnfollowersFromModal"
+                  >
+                    Copy Usernames
+                  </button>
+                  <button
+                    class="btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold"
+                    @click="downloadUnfollowersFromModal"
+                  >
+                    Download TXT
+                  </button>
+                </div>
+              </div>
+              <p v-if="modalExportMessage" class="text-xs text-slate-400 mb-3">{{ modalExportMessage }}</p>
               <div class="grid gap-2">
                 <FollowerCard
                   v-for="f in selectedDiff.unfollowers"
@@ -184,6 +255,8 @@ function formatDate(iso: string) {
                   :follower="f"
                   :profile-id="props.profileId"
                   compact
+                  show-linked-accounts-action
+                  @linked-accounts-saved="handleLinkedAccountsSaved"
                 />
               </div>
             </template>

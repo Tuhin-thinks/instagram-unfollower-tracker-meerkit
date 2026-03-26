@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { RouterLink } from "vue-router";
 import {
     cancelAutomationAction,
     confirmAutomationAction,
@@ -174,6 +175,12 @@ const estimatedUnfollow = computed(() => {
     );
     return Math.min(candidateCount, maxUnfollowCount.value);
 });
+
+const altProtectedExcludedCount = computed(() =>
+    (stagedResult.value?.excluded_items || []).filter(
+        (item) => item.exclusion_reason === "alternative_account_follows_you",
+    ).length,
+);
 
 const runningProgress = computed(() => {
     if (!currentAction.value || !currentAction.value.total_items) return 0;
@@ -395,6 +402,7 @@ const protectedPlaceholder = [
     "https://www.instagram.com/best_friend_backup/",
     "team_account",
 ].join("\n");
+
 </script>
 
 <template>
@@ -729,6 +737,17 @@ const protectedPlaceholder = [
                         :disabled="phase !== 'idle'"
                     />
                 </div>
+
+                <p class="text-xs text-slate-500 px-1">
+                    Linked accounts are managed in Admin.
+                    <RouterLink
+                        :to="{ name: 'admin' }"
+                        class="text-sky-400 hover:text-sky-300 underline underline-offset-2"
+                    >
+                        Open Admin Accounts
+                    </RouterLink>
+                    to add or update linked accounts.
+                </p>
             </section>
 
             <!-- Right: Controls + Status -->
@@ -855,6 +874,9 @@ const protectedPlaceholder = [
                         <p class="text-xs text-slate-400 mt-1">
                             {{ stagedResult.excluded_count }} excluded by
                             safelist rules
+                        </p>
+                        <p v-if="altProtectedExcludedCount" class="text-xs text-amber-300 mt-1">
+                            {{ altProtectedExcludedCount }} excluded because linked alt account follows you
                         </p>
                         <div
                             v-if="stagedResult.selected_items.length"

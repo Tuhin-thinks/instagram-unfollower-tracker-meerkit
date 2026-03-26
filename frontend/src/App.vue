@@ -11,6 +11,7 @@ import AutomationView from "./views/AutomationView.vue";
 import IntelligentBatchFollowAutomationView from "./views/IntelligentBatchFollowAutomationView.vue";
 import BatchUnfollowAutomationView from "./views/BatchUnfollowAutomationView.vue";
 import TechBackground from "./components/TechBackground.vue";
+import AltAccountsRegistryPanel from "./components/automation/AltAccountsRegistryPanel.vue";
 import * as api from "./services/api";
 import type {
     InstagramUserRecord,
@@ -51,6 +52,8 @@ const accountUpdateForm = ref({
     cookie_string: "",
 });
 const accountUpdateMessage = ref("");
+type DetailsTab = "overview" | "api_usage" | "cache" | "credentials" | "alt_registry";
+const detailsTab = ref<DetailsTab>("overview");
 const selectedApiUsage = ref<InstagramApiUsageAccountSummary | null>(null);
 const apiUsageLoading = ref(false);
 const apiUsageError = ref("");
@@ -241,6 +244,7 @@ watch(currentView, () => {
     if (currentView.value !== "details" && detailsCacheSizeInterval) {
         clearInterval(detailsCacheSizeInterval);
         detailsCacheSizeInterval = null;
+        detailsTab.value = "overview";
     }
 });
 
@@ -373,6 +377,7 @@ async function loadDetails(instagramUserId: string) {
 
 async function openDetails(instagramUserId: string) {
     await router.push({ name: "details", params: { instagramUserId } });
+    detailsTab.value = "overview";
     await loadDetails(instagramUserId);
 }
 
@@ -654,7 +659,7 @@ const discoveryUsername = computed(() => {
                 <!-- ── Account Details ───────────────────────────────── -->
                 <div
                     v-if="currentView === 'details' && selectedInstagramUser"
-                    class="max-w-2xl bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6 fade-in"
+                    class="w-full bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6 lg:p-8 fade-in"
                 >
                     <button
                         @click="goTo('admin')"
@@ -666,7 +671,46 @@ const discoveryUsername = computed(() => {
                     <p v-if="activeAccountMessage" class="mb-4 text-sm rounded-xl px-3 py-2.5 bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">
                         {{ activeAccountMessage }}
                     </p>
-                    <div class="grid gap-2 text-sm">
+
+                    <div class="mb-5 flex flex-wrap gap-2">
+                        <button
+                            class="rounded-lg px-3 py-1.5 text-xs font-semibold border transition"
+                            :class="detailsTab === 'overview' ? 'bg-violet-500/20 border-violet-400/50 text-violet-100' : 'bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.06]'"
+                            @click="detailsTab = 'overview'"
+                        >
+                            Overview
+                        </button>
+                        <button
+                            class="rounded-lg px-3 py-1.5 text-xs font-semibold border transition"
+                            :class="detailsTab === 'api_usage' ? 'bg-violet-500/20 border-violet-400/50 text-violet-100' : 'bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.06]'"
+                            @click="detailsTab = 'api_usage'"
+                        >
+                            API Usage
+                        </button>
+                        <button
+                            class="rounded-lg px-3 py-1.5 text-xs font-semibold border transition"
+                            :class="detailsTab === 'cache' ? 'bg-violet-500/20 border-violet-400/50 text-violet-100' : 'bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.06]'"
+                            @click="detailsTab = 'cache'"
+                        >
+                            Cache
+                        </button>
+                        <button
+                            class="rounded-lg px-3 py-1.5 text-xs font-semibold border transition"
+                            :class="detailsTab === 'credentials' ? 'bg-violet-500/20 border-violet-400/50 text-violet-100' : 'bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.06]'"
+                            @click="detailsTab = 'credentials'"
+                        >
+                            Credentials
+                        </button>
+                        <button
+                            class="rounded-lg px-3 py-1.5 text-xs font-semibold border transition"
+                            :class="detailsTab === 'alt_registry' ? 'bg-violet-500/20 border-violet-400/50 text-violet-100' : 'bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.06]'"
+                            @click="detailsTab = 'alt_registry'"
+                        >
+                            Alt Accounts Registry
+                        </button>
+                    </div>
+
+                    <div v-if="detailsTab === 'overview'" class="grid gap-2 text-sm">
                         <p>
                             <span class="text-slate-400 font-medium">Status:</span>
                             <span
@@ -692,10 +736,27 @@ const discoveryUsername = computed(() => {
                         <p v-if="hasStaleCredentials(selectedInstagramUser)" class="text-amber-400 text-xs mt-1">
                             ⚠ One or more credentials are older than 1 day.
                         </p>
+
+                        <div class="mt-5 flex gap-2">
+                            <button
+                                :disabled="switchPending"
+                                @click="switchInstagramUser(selectedInstagramUser.instagram_user_id)"
+                                class="btn-violet rounded-lg px-4 py-2 text-sm font-semibold"
+                            >
+                                Set Active
+                            </button>
+                            <button
+                                :disabled="removePending"
+                                @click="removeInstagramUser(selectedInstagramUser.instagram_user_id)"
+                                class="btn-danger rounded-lg px-4 py-2 text-sm font-semibold"
+                            >
+                                Delete Account
+                            </button>
+                        </div>
                     </div>
 
                     <!-- API Usage section -->
-                    <section class="mt-6 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]">
+                    <section v-if="detailsTab === 'api_usage'" class="mt-6 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]">
                         <h3 class="text-sm font-semibold text-slate-200">Instagram API Usage</h3>
                         <p class="text-xs text-slate-500 mt-1">Grouped by category and caller for this account.</p>
 
@@ -748,7 +809,7 @@ const discoveryUsername = computed(() => {
                     </section>
 
                     <!-- Cache Efficiency section -->
-                    <section class="mt-6 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]">
+                    <section v-if="detailsTab === 'cache'" class="mt-6 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]">
                         <div class="flex items-center justify-between gap-3">
                             <div>
                                 <h3 class="text-sm font-semibold text-slate-200">Cache Efficiency</h3>
@@ -824,7 +885,11 @@ const discoveryUsername = computed(() => {
                     </section>
 
                     <!-- Update form -->
-                    <form class="mt-5 space-y-3 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]" @submit.prevent="submitInstagramUserEdits()">
+                    <form
+                        v-if="detailsTab === 'credentials'"
+                        class="mt-5 space-y-3 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]"
+                        @submit.prevent="submitInstagramUserEdits()"
+                    >
                         <h3 class="text-sm font-semibold text-slate-200">Update Account Details</h3>
                         <input
                             v-model="accountUpdateForm.display_name"
@@ -867,22 +932,14 @@ const discoveryUsername = computed(() => {
                         </p>
                     </form>
 
-                    <div class="mt-5 flex gap-2">
-                        <button
-                            :disabled="switchPending"
-                            @click="switchInstagramUser(selectedInstagramUser.instagram_user_id)"
-                            class="btn-violet rounded-lg px-4 py-2 text-sm font-semibold"
-                        >
-                            Set Active
-                        </button>
-                        <button
-                            :disabled="removePending"
-                            @click="removeInstagramUser(selectedInstagramUser.instagram_user_id)"
-                            class="btn-danger rounded-lg px-4 py-2 text-sm font-semibold"
-                        >
-                            Delete Account
-                        </button>
-                    </div>
+                    <AltAccountsRegistryPanel
+                        v-if="detailsTab === 'alt_registry'"
+                        class="mt-5"
+                        title="Alt Accounts Registry"
+                        description="Register alt accounts for this user. Batch unfollow uses these mappings to protect linked main accounts."
+                        save-button-label="Save Registry Group"
+                        compact
+                    />
                 </div>
 
                 <div

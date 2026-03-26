@@ -65,7 +65,13 @@ export interface AutomationActionItem {
   display_username: string | null
   raw_input: string
   status: string
-  exclusion_reason: string | null
+  exclusion_reason:
+    | 'invalid_input'
+    | 'safelist'
+    | 'cap_reached'
+    | 'alternative_account_follows_you'
+    | string
+    | null
   error: string | null
   executed_at: string | null
 }
@@ -121,4 +127,40 @@ export interface SafelistResponse {
   list_type: string
   entries: SafelistEntry[]
   total: number
+}
+
+export interface AlternativeAccountLinkEntry {
+  link_id: string
+  app_user_id: string
+  reference_profile_id: string
+  primary_raw_input: string
+  primary_normalized_username: string | null
+  primary_normalized_user_id: string | null
+  primary_identity_key: string
+  alt_raw_input: string | null
+  alt_normalized_username: string | null
+  alt_normalized_user_id: string | null
+  alt_identity_key: string | null
+  linkedin_accounts?: string[]
+  create_date: string
+}
+
+export interface AlternativeAccountLinksResponse {
+  entries: AlternativeAccountLinkEntry[]
+  total: number
+}
+
+export interface AddAlternativeAccountLinksResponse {
+  primary_identity_key: string
+  added: number
+  skipped_invalid: number
+  linkedin_accounts: string[]
+  entries: AlternativeAccountLinkEntry[]
+  total: number
+  discovery: {
+    queued_prediction_ids: string[]
+    queued_task_ids: string[]
+    queued_count: number
+    skipped_discovery_identity_keys: string[]
+  }
 }

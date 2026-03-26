@@ -274,6 +274,17 @@ function formatProbability(value: number | null) {
     return `${Math.round(value * 100)}%`;
 }
 
+function hasAltFollowback(row: BatchRow) {
+    const payload = row.prediction?.result_payload as {
+        alt_followback_assessment?: {
+            is_alt_account_following_you?: boolean;
+        };
+    } | null;
+    return Boolean(
+        payload?.alt_followback_assessment?.is_alt_account_following_you,
+    );
+}
+
 function clearResults() {
     rows.value = [];
 }
@@ -369,6 +380,12 @@ function clearResults() {
                         >
                             Open discovery
                         </RouterLink>
+                        <p
+                            v-if="hasAltFollowback(row)"
+                            class="mt-1 inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold border bg-amber-500/15 text-amber-300 border-amber-500/30"
+                        >
+                            Alt acc follows you
+                        </p>
                     </div>
 
                     <div>
