@@ -13,6 +13,7 @@ from backend.extensions import automation_action_queue
 from backend.services import automation_runner, db_service
 from backend.services.automation_service import (
     execute_follow_item,
+    execute_left_right_compare_item,
     execute_unfollow_item,
     inter_action_delay,
 )
@@ -94,6 +95,13 @@ def start_automation_worker() -> None:
                     )
                     continue
 
+                if not isinstance(instagram_user, dict):
+                    automation_runner.mark_action_error(
+                        action_id,
+                        "Action is missing execution credentials. Please re-confirm and run again.",
+                    )
+                    continue
+
                 automation_runner.mark_action_running(action_id)
                 _execute_action(
                     action_id=action_id,
@@ -144,9 +152,14 @@ def _execute_action(
         automation_runner.mark_action_completed(action_id)
         return
 
-    executor = (
-        execute_follow_item if action_type == "batch_follow" else execute_unfollow_item
-    )
+    if action_type == "batch_follow":
+        executor = execute_follow_item
+    elif action_type == "batch_unfollow":
+        executor = execute_unfollow_item
+    elif action_type == "left_right_compare":
+        executor = execute_left_right_compare_item
+    else:
+        raise ValueError(f"Unsupported automation action type: {action_type}")
 
     for idx, item in enumerate(pending_items):
         current = automation_runner.get_action_status(action_id)
@@ -173,11 +186,34 @@ def _execute_action(
     # Determine final status based on outcome counts.
     final = db_service.get_automation_action(action_id)
     if final:
+        if action_type == "left_right_compare":
+            config = dict(final.get("config") or {})
+            comparison_result = dict(config.get("comparison_result") or {})
+            if comparison_result:
+                comparison_result["status"] = "completed"
+                config["comparison_result"] = comparison_result
+                db_service.update_automation_action(action_id, config_json=config)
+                final = db_service.get_automation_action(action_id) or final
+
         failed = final.get("failed_items") or 0
         completed = final.get("completed_items") or 0
         if failed == 0:
             automation_runner.mark_action_completed(action_id)
         elif completed == 0:
+            if action_type == "left_right_compare":
+                config = dict(final.get("config") or {})
+                comparison_result = dict(config.get("comparison_result") or {})
+                if comparison_result:
+                    comparison_result["status"] = "error"
+                    config["comparison_result"] = comparison_result
+                    db_service.update_automation_action(action_id, config_json=config)
             automation_runner.mark_action_error(action_id, "All items failed")
         else:
+            if action_type == "left_right_compare":
+                config = dict(final.get("config") or {})
+                comparison_result = dict(config.get("comparison_result") or {})
+                if comparison_result:
+                    comparison_result["status"] = "partial"
+                    config["comparison_result"] = comparison_result
+                    db_service.update_automation_action(action_id, config_json=config)
             automation_runner.mark_action_partial(action_id)

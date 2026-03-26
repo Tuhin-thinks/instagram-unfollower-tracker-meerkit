@@ -775,6 +775,185 @@ def prepare_batch_unfollow(
     }
 
 
+def prepare_left_right_compare(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    instagram_user: dict | None,
+    left_lines: list[str],
+    right_lines: list[str],
+    config: dict,
+) -> dict:
+    """Stage a left-right follower comparison action.
+
+    For each left profile, execution checks whether each right profile is present
+    in the left profile's followers list (right -> left direction).
+    """
+    max_left_count = int(config.get("max_left_count") or 50)
+    max_right_count = int(config.get("max_right_count") or 500)
+
+    if max_left_count < 1 or max_right_count < 1:
+        raise ValueError("max_left_count and max_right_count must be >= 1")
+
+    left_candidates = bulk_normalize_entries(left_lines)
+    right_candidates = bulk_normalize_entries(right_lines)
+
+    left_selected: list[dict] = []
+    left_excluded: list[dict] = []
+    right_selected: list[dict] = []
+    right_excluded: list[dict] = []
+
+    for entry in left_candidates:
+        if not entry["is_valid"]:
+            left_excluded.append({**entry, "exclusion_reason": "invalid_input"})
+            continue
+        if len(left_selected) >= max_left_count:
+            left_excluded.append({**entry, "exclusion_reason": "cap_reached"})
+            continue
+        left_selected.append(entry)
+
+    for entry in right_candidates:
+        if not entry["is_valid"]:
+            right_excluded.append({**entry, "exclusion_reason": "invalid_input"})
+            continue
+        if len(right_selected) >= max_right_count:
+            right_excluded.append({**entry, "exclusion_reason": "cap_reached"})
+            continue
+        right_selected.append(entry)
+
+    if not left_selected:
+        raise ValueError("No valid left-side targets were provided")
+    if not right_selected:
+        raise ValueError("No valid right-side targets were provided")
+
+    if instagram_user:
+        for entry in right_selected:
+            if entry.get("normalized_user_id") or not entry.get("normalized_username"):
+                continue
+            resolved_right = _resolve_identity_to_user_id(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                instagram_user=instagram_user,
+                normalized_username=entry["normalized_username"],
+            )
+            if resolved_right:
+                entry["normalized_user_id"] = resolved_right
+
+    action_id = str(uuid4())
+
+    right_targets_config = [
+        {
+            "raw_input": e["raw_input"],
+            "display_username": e.get("normalized_username")
+            or e.get("normalized_user_id"),
+            "normalized_username": e.get("normalized_username"),
+            "normalized_user_id": e.get("normalized_user_id"),
+            "identity_key": e.get("identity_key"),
+        }
+        for e in right_selected
+    ]
+
+    comparison_result = {
+        "schema_version": 1,
+        "status": "staged",
+        "left_rows": [],
+        "right_targets": right_targets_config,
+        "totals": {
+            "left_total": len(left_selected),
+            "right_total": len(right_selected),
+            "relations_total": len(left_selected) * len(right_selected),
+            "follows_total": 0,
+            "missing_total": len(left_selected) * len(right_selected),
+            "unresolved_total": 0,
+        },
+    }
+
+    db_service.create_automation_action(
+        action_id=action_id,
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        action_type="left_right_compare",
+        status="staged",
+        config={
+            **config,
+            "max_left_count": max_left_count,
+            "max_right_count": max_right_count,
+            "comparison_result": comparison_result,
+        },
+    )
+
+    item_rows = [
+        {
+            "item_id": str(uuid4()),
+            "action_id": action_id,
+            "app_user_id": app_user_id,
+            "reference_profile_id": reference_profile_id,
+            "raw_input": e["raw_input"],
+            "normalized_username": e["normalized_username"],
+            "normalized_user_id": e["normalized_user_id"],
+            "display_username": e.get("normalized_username")
+            or e.get("normalized_user_id"),
+            "status": "pending",
+            "exclusion_reason": None,
+        }
+        for e in left_selected
+    ] + [
+        {
+            "item_id": str(uuid4()),
+            "action_id": action_id,
+            "app_user_id": app_user_id,
+            "reference_profile_id": reference_profile_id,
+            "raw_input": e["raw_input"],
+            "normalized_username": e["normalized_username"],
+            "normalized_user_id": e["normalized_user_id"],
+            "display_username": e.get("normalized_username")
+            or e.get("normalized_user_id"),
+            "status": "skipped",
+            "exclusion_reason": e.get("exclusion_reason"),
+        }
+        for e in left_excluded
+    ]
+
+    db_service.insert_automation_action_items(item_rows)
+    db_service.update_automation_action(
+        action_id,
+        total_items=len(left_selected),
+        skipped_items=len(left_excluded),
+    )
+
+    return {
+        "action_id": action_id,
+        "action_type": "left_right_compare",
+        "status": "staged",
+        "selected_count": len(left_selected),
+        "excluded_count": len(left_excluded),
+        "right_selected_count": len(right_selected),
+        "right_excluded_count": len(right_excluded),
+        "selected_items": [
+            {
+                "raw_input": e["raw_input"],
+                "display_username": e.get("normalized_username")
+                or e.get("normalized_user_id"),
+            }
+            for e in left_selected
+        ],
+        "excluded_items": [
+            {
+                "raw_input": e["raw_input"],
+                "exclusion_reason": e.get("exclusion_reason"),
+            }
+            for e in left_excluded
+        ],
+        "right_excluded_items": [
+            {
+                "raw_input": e["raw_input"],
+                "exclusion_reason": e.get("exclusion_reason"),
+            }
+            for e in right_excluded
+        ],
+    }
+
+
 # ── Confirm and enqueue ────────────────────────────────────────────────────────
 
 
@@ -954,6 +1133,153 @@ def execute_unfollow_item(
         executed_at=_now_iso(),
     )
     return False
+
+
+def execute_left_right_compare_item(
+    *,
+    item: dict,
+    instagram_user: dict,
+    app_user_id: str,
+) -> bool:
+    """Execute one left-side comparison item against all right-side targets."""
+    item_id = item["item_id"]
+    action_id = item["action_id"]
+    db_service.update_automation_action_item(item_id, status="running")
+
+    left_user_id = _resolve_item_user_id(item, instagram_user, app_user_id)
+    if not left_user_id:
+        db_service.update_automation_action_item(
+            item_id,
+            status="error",
+            error="Could not resolve left-side target user ID",
+            executed_at=_now_iso(),
+        )
+        return False
+
+    left_display = (
+        item.get("normalized_username") or item.get("display_username") or left_user_id
+    )
+
+    profile = _get_cached_profile(instagram_user)
+    try:
+        left_followers = instagram_gateway.get_target_followers_v2(
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user["instagram_user_id"],
+            profile=profile,
+            target_user_id=left_user_id,
+            caller_service="automation_service",
+            caller_method="execute_left_right_compare_item",
+        )
+    except Exception as exc:
+        db_service.update_automation_action_item(
+            item_id,
+            status="error",
+            error=f"Failed fetching followers for {left_display}: {exc}",
+            executed_at=_now_iso(),
+        )
+        return False
+
+    follower_ids = {record.pk_id for record in left_followers}
+    action = db_service.get_automation_action(action_id)
+    config = (action or {}).get("config") or {}
+    comparison_result = dict(config.get("comparison_result") or {})
+    right_targets = list(comparison_result.get("right_targets") or [])
+
+    updated_right_targets: list[dict] = []
+    connections: list[dict] = []
+    follows_count = 0
+    unresolved_count = 0
+
+    for target in right_targets:
+        right_target = dict(target)
+        right_user_id = right_target.get("normalized_user_id")
+        right_username = right_target.get("normalized_username")
+
+        if not right_user_id and right_username:
+            resolved_right = _resolve_identity_to_user_id(
+                app_user_id=app_user_id,
+                reference_profile_id=instagram_user["instagram_user_id"],
+                instagram_user=instagram_user,
+                normalized_username=right_username,
+            )
+            if resolved_right:
+                right_user_id = resolved_right
+                right_target["normalized_user_id"] = resolved_right
+
+        is_following = bool(right_user_id and right_user_id in follower_ids)
+        if is_following:
+            follows_count += 1
+        if not right_user_id:
+            unresolved_count += 1
+
+        connections.append(
+            {
+                "right_identity_key": right_target.get("identity_key"),
+                "right_display": right_target.get("display_username")
+                or right_target.get("normalized_username")
+                or right_target.get("normalized_user_id"),
+                "right_user_id": right_user_id,
+                "is_following": is_following,
+                "resolved": bool(right_user_id),
+            }
+        )
+        updated_right_targets.append(right_target)
+
+    missing_count = len(connections) - follows_count
+
+    left_row = {
+        "left_item_id": item_id,
+        "left_raw_input": item.get("raw_input"),
+        "left_display": left_display,
+        "left_user_id": left_user_id,
+        "left_followers_count": len(left_followers),
+        "follows_count": follows_count,
+        "missing_count": missing_count,
+        "unresolved_count": unresolved_count,
+        "connections": connections,
+    }
+
+    existing_rows = [
+        row
+        for row in list(comparison_result.get("left_rows") or [])
+        if row.get("left_item_id") != item_id
+    ]
+    existing_rows.append(left_row)
+
+    total_follows = sum(int(row.get("follows_count") or 0) for row in existing_rows)
+    total_missing = sum(int(row.get("missing_count") or 0) for row in existing_rows)
+    total_unresolved = sum(
+        int(row.get("unresolved_count") or 0) for row in existing_rows
+    )
+
+    totals = dict(comparison_result.get("totals") or {})
+    totals["left_total"] = int(totals.get("left_total") or len(existing_rows))
+    totals["right_total"] = int(totals.get("right_total") or len(updated_right_targets))
+    totals["relations_total"] = int(
+        totals.get("relations_total") or totals["left_total"] * totals["right_total"]
+    )
+    totals["follows_total"] = total_follows
+    totals["missing_total"] = total_missing
+    totals["unresolved_total"] = total_unresolved
+
+    comparison_result.update(
+        {
+            "status": "running",
+            "left_rows": existing_rows,
+            "right_targets": updated_right_targets,
+            "totals": totals,
+        }
+    )
+
+    config["comparison_result"] = comparison_result
+    db_service.update_automation_action(action_id, config_json=config)
+    db_service.update_automation_action_item(
+        item_id,
+        status="completed",
+        result_json=left_row,
+        executed_at=_now_iso(),
+    )
+    return True
 
 
 def inter_action_delay() -> None:

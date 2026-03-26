@@ -5,6 +5,7 @@ Endpoints:
   GET    /api/automation/following-users            — Fetch accounts the active profile follows
   POST   /api/automation/batch-follow/prepare       — Stage a batch follow action
   POST   /api/automation/batch-unfollow/prepare     — Stage a batch unfollow action
+    POST   /api/automation/left-right-compare/prepare — Stage a left-right comparison action
   POST   /api/automation/actions/<id>/confirm       — Confirm and enqueue staged action
   POST   /api/automation/actions/<id>/cancel        — Cancel a queued/running action
   GET    /api/automation/actions/<id>               — Get action status + item summary
@@ -38,6 +39,7 @@ from backend.services.automation_service import (
     list_safelist,
     prepare_batch_follow,
     prepare_batch_unfollow,
+    prepare_left_right_compare,
     remove_alt_link,
     remove_safelist_entry,
 )
@@ -486,6 +488,49 @@ def prepare_unfollow():
     return jsonify(result), 201
 
 
+@bp.post("/left-right-compare/prepare")
+def prepare_left_right_follow_compare():
+    app_user_id, context = _active_scope()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    reference_profile_id: str = instagram_user["instagram_user_id"]
+
+    payload = request.get_json(silent=True) or {}
+    left_lines: list[str] = payload.get("left_targets") or []
+    right_lines: list[str] = payload.get("right_targets") or []
+    config: dict = {
+        "max_left_count": int(payload.get("max_left_count") or 50),
+        "max_right_count": int(payload.get("max_right_count") or 500),
+    }
+
+    if not left_lines:
+        return jsonify({"error": "left_targets list is required"}), 400
+    if not right_lines:
+        return jsonify({"error": "right_targets list is required"}), 400
+
+    if config["max_left_count"] > 50:
+        return jsonify({"error": "max_left_count cannot exceed 50"}), 400
+    if config["max_right_count"] > 500:
+        return jsonify({"error": "max_right_count cannot exceed 500"}), 400
+
+    try:
+        result = prepare_left_right_compare(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            instagram_user=instagram_user,
+            left_lines=left_lines,
+            right_lines=right_lines,
+            config=config,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify(result), 201
+
+
 # ── Action lifecycle ───────────────────────────────────────────────────────────
 
 
@@ -554,6 +599,7 @@ def get_action(action_id: str):
                 "exclusion_reason": item.get("exclusion_reason"),
                 "error": item.get("error"),
                 "executed_at": item.get("executed_at"),
+                "result": item.get("result"),
             }
         )
 
@@ -570,9 +616,15 @@ def list_actions():
     instagram_user = cast(dict, context)
     reference_profile_id: str = instagram_user["instagram_user_id"]
 
+    action_type = request.args.get("action_type", type=str)
+    requested_limit = request.args.get("limit", default=20, type=int)
+    limit = min(max(requested_limit or 20, 1), 500)
+
     actions = automation_runner.list_active_actions(
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
+        action_type=action_type,
+        limit=limit,
     )
     return jsonify({"actions": actions, "total": len(actions)})
 

@@ -178,6 +178,9 @@ def record_item_failed(action_id: str) -> None:
 def list_active_actions(
     app_user_id: str,
     reference_profile_id: str,
+    *,
+    action_type: str | None = None,
+    limit: int = 20,
 ) -> list[dict]:
     rows = db_service.list_automation_actions(
         app_user_id=app_user_id,
@@ -191,6 +194,9 @@ def list_active_actions(
             "error",
             "cancelled",
         ],
-        limit=20,
+        limit=limit,
     )
-    return [a for a in (normalize_action(r) for r in rows) if a is not None]
+    normalized = [a for a in (normalize_action(r) for r in rows) if a is not None]
+    if action_type:
+        normalized = [a for a in normalized if a.get("action_type") == action_type]
+    return normalized
