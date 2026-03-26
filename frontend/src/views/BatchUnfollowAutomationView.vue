@@ -50,6 +50,10 @@ type SortMetric = "follower_count" | "following_count";
 type SortOrder = "asc" | "desc";
 const sortMetric = ref<SortMetric>("follower_count");
 const sortOrder = ref<SortOrder>("desc");
+const followerCountMin = ref(0);
+const followerCountMax = ref(0);
+const followingCountMin = ref(0);
+const followingCountMax = ref(0);
 
 // ── Never-unfollow list ────────────────────────────────────────────────
 
@@ -83,12 +87,33 @@ let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const filteredFollowingList = computed(() => {
     const q = followingSearch.value.trim().toLowerCase();
+    const followerMin = Math.min(followerCountMin.value, followerCountMax.value);
+    const followerMax = Math.max(followerCountMin.value, followerCountMax.value);
+    const followingMin = Math.min(
+        followingCountMin.value,
+        followingCountMax.value,
+    );
+    const followingMax = Math.max(
+        followingCountMin.value,
+        followingCountMax.value,
+    );
+
     const filtered = followingList.value.filter(
-        (u) =>
-            (!showOnlyNotFollowingBack.value || !u.follows_you) &&
-            (!q ||
-                u.username.toLowerCase().includes(q) ||
-                u.full_name.toLowerCase().includes(q)),
+        (u) => {
+            const userFollowerCount = u.follower_count ?? 0;
+            const userFollowingCount = u.following_count ?? 0;
+
+            return (
+                (!showOnlyNotFollowingBack.value || !u.follows_you) &&
+                (!q ||
+                    u.username.toLowerCase().includes(q) ||
+                    u.full_name.toLowerCase().includes(q)) &&
+                userFollowerCount >= followerMin &&
+                userFollowerCount <= followerMax &&
+                userFollowingCount >= followingMin &&
+                userFollowingCount <= followingMax
+            );
+        },
     );
 
     const metric = sortMetric.value;
@@ -120,6 +145,25 @@ const filteredFollowingList = computed(() => {
 const notFollowingBackCount = computed(
     () => followingList.value.filter((u) => !u.follows_you).length,
 );
+
+const followingCountBounds = computed(() => {
+    let maxFollowers = 0;
+    let maxFollowing = 0;
+    for (const user of followingList.value) {
+        const followers = user.follower_count ?? 0;
+        const following = user.following_count ?? 0;
+        if (followers > maxFollowers) {
+            maxFollowers = followers;
+        }
+        if (following > maxFollowing) {
+            maxFollowing = following;
+        }
+    }
+    return {
+        maxFollowers,
+        maxFollowing,
+    };
+});
 
 function parseUniqueEntries(raw: string) {
     return Array.from(
@@ -203,6 +247,7 @@ async function loadFollowingList() {
             followersTotal: res.followers_total,
             followingTotal: res.following_total,
         };
+        syncCountFiltersWithData();
         followingLoaded.value = true;
     } catch (err: unknown) {
         followingError.value =
@@ -212,6 +257,36 @@ async function loadFollowingList() {
     } finally {
         followingLoading.value = false;
     }
+}
+
+function syncCountFiltersWithData() {
+    followerCountMin.value = 0;
+    followerCountMax.value = followingCountBounds.value.maxFollowers;
+    followingCountMin.value = 0;
+    followingCountMax.value = followingCountBounds.value.maxFollowing;
+}
+
+function resetCountFilters() {
+    syncCountFiltersWithData();
+}
+
+function clampCountValue(value: number, max: number) {
+    if (!Number.isFinite(value)) {
+        return 0;
+    }
+    return Math.min(Math.max(Math.round(value), 0), max);
+}
+
+function normalizeFollowerRangeInputs() {
+    const max = followingCountBounds.value.maxFollowers;
+    followerCountMin.value = clampCountValue(followerCountMin.value, max);
+    followerCountMax.value = clampCountValue(followerCountMax.value, max);
+}
+
+function normalizeFollowingRangeInputs() {
+    const max = followingCountBounds.value.maxFollowing;
+    followingCountMin.value = clampCountValue(followingCountMin.value, max);
+    followingCountMax.value = clampCountValue(followingCountMax.value, max);
 }
 
 function openInstagramProfile(username: string) {
@@ -264,11 +339,16 @@ async function prepare() {
 // ── Confirm ────────────────────────────────────────────────────────────
 
 async function confirm() {
-    if (!stagedResult.value) return;
+    const actionId =
+        stagedResult.value?.action_id ??
+        (activeActionLock.value?.status === "staged"
+            ? activeActionLock.value.action_id
+            : null);
+    if (!actionId) return;
     phase.value = "confirming";
     actionError.value = null;
     try {
-        const action = await confirmAutomationAction(stagedResult.value.action_id);
+        const action = await confirmAutomationAction(actionId);
         registerAutomationJob(action);
         activeActionLock.value = action;
         currentAction.value = action;
@@ -370,7 +450,9 @@ async function recoverExistingAction() {
 
         activeActionLock.value = action;
         currentAction.value = action;
-        if (action.status === "queued" || action.status === "running") {
+        if (action.status === "staged") {
+            phase.value = "staged";
+        } else if (action.status === "queued" || action.status === "running") {
             phase.value = "running";
             schedulePoll(action.action_id);
         }
@@ -574,6 +656,108 @@ const protectedPlaceholder = [
                                         <option value="desc">High → Low</option>
                                         <option value="asc">Low → High</option>
                                     </select>
+                                </div>
+                            </div>
+
+                            <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-3">
+                                <div class="flex items-center justify-between gap-2">
+                                    <p class="text-xs text-slate-300 font-medium">
+                                        Count Filters
+                                    </p>
+                                    <button
+                                        class="btn-ghost rounded-md px-2 py-1 text-[11px]"
+                                        @click="resetCountFilters"
+                                    >
+                                        Reset count filters
+                                    </button>
+                                </div>
+
+                                <div class="grid gap-3 md:grid-cols-2">
+                                    <div class="space-y-1.5">
+                                        <p class="text-xs text-slate-400">
+                                            Followers: {{ Math.min(followerCountMin, followerCountMax) }} -
+                                            {{ Math.max(followerCountMin, followerCountMax) }}
+                                        </p>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <input
+                                                v-model.number="followerCountMin"
+                                                type="number"
+                                                min="0"
+                                                :max="followingCountBounds.maxFollowers"
+                                                class="input-dark text-xs h-8"
+                                                aria-label="Minimum followers"
+                                                @blur="normalizeFollowerRangeInputs"
+                                            />
+                                            <input
+                                                v-model.number="followerCountMax"
+                                                type="number"
+                                                min="0"
+                                                :max="followingCountBounds.maxFollowers"
+                                                class="input-dark text-xs h-8"
+                                                aria-label="Maximum followers"
+                                                @blur="normalizeFollowerRangeInputs"
+                                            />
+                                        </div>
+                                        <input
+                                            v-model.number="followerCountMin"
+                                            type="range"
+                                            min="0"
+                                            :max="followingCountBounds.maxFollowers"
+                                            step="1"
+                                            class="w-full"
+                                        />
+                                        <input
+                                            v-model.number="followerCountMax"
+                                            type="range"
+                                            min="0"
+                                            :max="followingCountBounds.maxFollowers"
+                                            step="1"
+                                            class="w-full"
+                                        />
+                                    </div>
+
+                                    <div class="space-y-1.5">
+                                        <p class="text-xs text-slate-400">
+                                            Following: {{ Math.min(followingCountMin, followingCountMax) }} -
+                                            {{ Math.max(followingCountMin, followingCountMax) }}
+                                        </p>
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <input
+                                                v-model.number="followingCountMin"
+                                                type="number"
+                                                min="0"
+                                                :max="followingCountBounds.maxFollowing"
+                                                class="input-dark text-xs h-8"
+                                                aria-label="Minimum following"
+                                                @blur="normalizeFollowingRangeInputs"
+                                            />
+                                            <input
+                                                v-model.number="followingCountMax"
+                                                type="number"
+                                                min="0"
+                                                :max="followingCountBounds.maxFollowing"
+                                                class="input-dark text-xs h-8"
+                                                aria-label="Maximum following"
+                                                @blur="normalizeFollowingRangeInputs"
+                                            />
+                                        </div>
+                                        <input
+                                            v-model.number="followingCountMin"
+                                            type="range"
+                                            min="0"
+                                            :max="followingCountBounds.maxFollowing"
+                                            step="1"
+                                            class="w-full"
+                                        />
+                                        <input
+                                            v-model.number="followingCountMax"
+                                            type="range"
+                                            min="0"
+                                            :max="followingCountBounds.maxFollowing"
+                                            step="1"
+                                            class="w-full"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
@@ -907,6 +1091,25 @@ const protectedPlaceholder = [
                         </div>
                     </template>
 
+                    <!-- Recovered staged action (no local staged preview payload) -->
+                    <template v-else-if="phase === 'staged' && currentAction">
+                        <p
+                            class="text-xs uppercase tracking-wide text-emerald-300/85"
+                        >
+                            ✓ Ready to Execute
+                        </p>
+                        <p class="text-sm text-slate-100 mt-2">
+                            A previously prepared batch is staged on the server.
+                        </p>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Action ID: {{ currentAction.action_id }}
+                        </p>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Click <strong>Confirm &amp; Execute</strong> to continue,
+                            or <strong>Cancel Staged Batch</strong> to unlock.
+                        </p>
+                    </template>
+
                     <!-- Confirming -->
                     <template v-else-if="phase === 'confirming'">
                         <p
@@ -1037,18 +1240,18 @@ const protectedPlaceholder = [
                             class="btn-danger rounded-xl px-4 py-2.5 text-sm font-semibold"
                             :class="{
                                 'opacity-50 cursor-not-allowed':
-                                    !stagedResult?.selected_count,
+                                    !stagedResult?.selected_count && !currentAction,
                             }"
-                            :disabled="!stagedResult?.selected_count"
+                            :disabled="!stagedResult?.selected_count && !currentAction"
                             @click="confirm"
                         >
                             Confirm &amp; Execute
                         </button>
                         <button
                             class="btn-ghost rounded-xl px-4 py-2.5 text-sm font-semibold"
-                            @click="reset"
+                            @click="cancel"
                         >
-                            Start Over
+                            Cancel Staged Batch
                         </button>
                     </template>
 
