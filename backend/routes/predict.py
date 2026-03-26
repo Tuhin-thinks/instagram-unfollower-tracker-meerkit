@@ -111,12 +111,14 @@ def prediction_history():
 
     instagram_user = cast(dict, context)
     target_profile_id = request.args.get("target_profile_id")
-    limit = int(request.args.get("limit", 50))
+    limit = max(1, min(int(request.args.get("limit", 50)), 200))
+    offset = max(0, int(request.args.get("offset", 0)))
     predictions = db_service.list_predictions(
         app_user_id=app_user_id,
         reference_profile_id=instagram_user["instagram_user_id"],
         target_profile_id=target_profile_id,
         limit=limit,
+        offset=offset,
     )
     return jsonify(predictions)
 

@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue";
-import { RouterLink } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 import PredictionStatePanel from "../components/prediction/PredictionStatePanel.vue";
 import PredictionStatusBadge from "../components/prediction/PredictionStatusBadge.vue";
 import ProbabilityChip from "../components/prediction/ProbabilityChip.vue";
 import TaskProgressBar from "../components/prediction/TaskProgressBar.vue";
 import * as api from "../services/api";
+import {
+    extractApiErrorMessage,
+    mapTargetAccessError,
+} from "../services/targetAccessErrors";
 import { setBulkBatchRunning } from "../services/uiTaskState";
 import type {
     FollowBackPredictionResponse,
@@ -16,6 +20,8 @@ import type {
 const props = defineProps<{
     profileId: string;
 }>();
+
+const router = useRouter();
 
 interface BatchRow {
     rawInput: string;
@@ -30,6 +36,7 @@ interface BatchRow {
 const input = ref("");
 const isRunning = ref(false);
 const rows = ref<BatchRow[]>([]);
+const exportMessage = ref("");
 const batchPlaceholder = [
     "example_user",
     "https://www.instagram.com/second.user/",
@@ -71,6 +78,14 @@ const erroredCount = computed(
             (row) => row.status === "error" || row.status === "invalid",
         ).length,
 );
+
+const completedPredictionRows = computed(() =>
+    rows.value.filter(
+        (row) => row.status === "completed" && row.prediction !== null,
+    ),
+);
+
+const canExportCompleted = computed(() => completedPredictionRows.value.length > 0);
 
 function extractInstagramUsername(token: string): string | null {
     if (!token.toLowerCase().includes("instagram.com")) {
@@ -180,7 +195,10 @@ async function pollTask(row: BatchRow, taskId: string, predictionId: string) {
 
         if (task.status === "error") {
             row.status = "error";
-            row.message = task.error || "Prediction refresh failed.";
+            row.message = mapTargetAccessError(
+                task.error || null,
+                "Prediction refresh failed.",
+            );
             return;
         }
 
@@ -228,10 +246,10 @@ async function executeRow(row: BatchRow) {
             response.prediction.prediction_id,
         );
     } catch (error: unknown) {
-        const message =
-            (error as { response?: { data?: { error?: string } } })?.response
-                ?.data?.error ||
-            "Could not request prediction for this target.";
+        const message = mapTargetAccessError(
+            extractApiErrorMessage(error),
+            "Could not request prediction for this target.",
+        );
         row.status = "error";
         row.message = message;
     }
@@ -287,6 +305,103 @@ function hasAltFollowback(row: BatchRow) {
 
 function clearResults() {
     rows.value = [];
+    exportMessage.value = "";
+}
+
+function getCompletedUsernames(): string[] {
+    const usernames = new Set<string>();
+    for (const row of completedPredictionRows.value) {
+        const username = row.prediction?.target_username?.trim();
+        if (username) {
+            usernames.add(username);
+        }
+    }
+    return Array.from(usernames);
+}
+
+function getCompletedJsonPayload(): Array<Record<string, unknown>> {
+    return completedPredictionRows.value.map((row) => ({
+        username: row.prediction!.target_username,
+        target_profile_id: row.prediction!.target_profile_id,
+        probability: row.prediction!.probability,
+        confidence: row.prediction!.confidence,
+        status: row.prediction!.status,
+        outcome_status: row.prediction!.outcome_status,
+        requested_at: row.prediction!.requested_at,
+        computed_at: row.prediction!.computed_at,
+        data_as_of: row.prediction!.data_as_of,
+        source_input: row.rawInput,
+    }));
+}
+
+async function copyTextToClipboard(text: string, successLabel: string) {
+    try {
+        await navigator.clipboard.writeText(text);
+        exportMessage.value = successLabel;
+    } catch {
+        exportMessage.value = "Clipboard copy failed. Please try download instead.";
+    }
+}
+
+function downloadTextFile(filename: string, content: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+}
+
+async function copyCompletedAsTxt() {
+    const usernames = getCompletedUsernames();
+    if (!usernames.length) {
+        exportMessage.value = "No completed usernames available.";
+        return;
+    }
+    await copyTextToClipboard(usernames.join("\n"), "Copied usernames as TXT.");
+}
+
+async function copyCompletedAsJson() {
+    const payload = getCompletedJsonPayload();
+    if (!payload.length) {
+        exportMessage.value = "No completed predictions available.";
+        return;
+    }
+    await copyTextToClipboard(
+        JSON.stringify(payload, null, 2),
+        "Copied completed predictions as JSON.",
+    );
+}
+
+function downloadCompletedAsTxt() {
+    const usernames = getCompletedUsernames();
+    if (!usernames.length) {
+        exportMessage.value = "No completed usernames available.";
+        return;
+    }
+    downloadTextFile("prediction_usernames.txt", usernames.join("\n"), "text/plain;charset=utf-8");
+    exportMessage.value = "Downloaded usernames TXT file.";
+}
+
+function downloadCompletedAsJson() {
+    const payload = getCompletedJsonPayload();
+    if (!payload.length) {
+        exportMessage.value = "No completed predictions available.";
+        return;
+    }
+    downloadTextFile(
+        "prediction_details.json",
+        JSON.stringify(payload, null, 2),
+        "application/json;charset=utf-8",
+    );
+    exportMessage.value = "Downloaded detailed JSON file.";
+}
+
+function openPredictionHistory() {
+    void router.push({ name: "predictions-history" });
 }
 </script>
 
@@ -315,6 +430,12 @@ function clearResults() {
                 </p>
                 <div class="flex items-center gap-2">
                     <button
+                        class="btn-ghost px-4 py-2 rounded-lg text-sm font-semibold"
+                        @click="openPredictionHistory"
+                    >
+                        Prediction History
+                    </button>
+                    <button
                         v-if="rows.length"
                         class="btn-ghost px-4 py-2 rounded-lg text-sm font-semibold"
                         @click="clearResults"
@@ -330,7 +451,46 @@ function clearResults() {
                     </button>
                 </div>
             </div>
+
+            <div
+                v-if="canExportCompleted"
+                class="mt-4 border border-white/10 rounded-xl bg-white/[0.03] p-3"
+            >
+                <p class="text-xs text-slate-300 font-semibold mb-2">
+                    Completed export options
+                </p>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button
+                        class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-semibold"
+                        @click="copyCompletedAsTxt"
+                    >
+                        Copy TXT (usernames)
+                    </button>
+                    <button
+                        class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-semibold"
+                        @click="copyCompletedAsJson"
+                    >
+                        Copy JSON (detailed)
+                    </button>
+                    <button
+                        class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-semibold"
+                        @click="downloadCompletedAsTxt"
+                    >
+                        Download TXT
+                    </button>
+                    <button
+                        class="btn-ghost px-3 py-1.5 rounded-lg text-xs font-semibold"
+                        @click="downloadCompletedAsJson"
+                    >
+                        Download JSON
+                    </button>
+                </div>
+                <p v-if="exportMessage" class="text-xs text-cyan-300 mt-2">
+                    {{ exportMessage }}
+                </p>
+            </div>
         </div>
+
 
         <PredictionStatePanel
             v-if="!rows.length"

@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import Dashboard from "./views/Dashboard.vue";
 import HistoryView from "./views/HistoryView.vue";
 import PredictionsBulkView from "./views/PredictionsBulkView.vue";
+import PredictionsHistoryView from "./views/PredictionsHistoryView.vue";
 import DiscoveryView from "./views/DiscoveryView.vue";
 import TasksView from "./views/TasksView.vue";
 import AutomationView from "./views/AutomationView.vue";
@@ -31,6 +32,7 @@ type AppView =
     | "dashboard"
     | "history"
     | "predictions"
+    | "predictions-history"
     | "automation"
     | "automation-intelligent-follow"
     | "automation-batch-unfollow"
@@ -86,6 +88,7 @@ const currentView = computed<AppView>(() => {
             "dashboard",
             "history",
             "predictions",
+            "predictions-history",
             "automation",
             "automation-intelligent-follow",
             "automation-batch-unfollow",
@@ -113,6 +116,9 @@ const activeTab = computed(() => {
         currentView.value === "automation-left-right-compare-results"
     ) {
         return "automation";
+    }
+    if (currentView.value === "predictions-history") {
+        return "predictions";
     }
     return currentView.value;
 });
@@ -569,6 +575,14 @@ const discoveryUsername = computed(() => {
                     <PredictionsBulkView
                         v-if="currentView === 'predictions' && activeInstagramUser"
                         :profile-id="activeInstagramUser.instagram_user_id"
+                    />
+                </KeepAlive>
+
+                <KeepAlive>
+                    <PredictionsHistoryView
+                        v-if="currentView === 'predictions-history' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        :profile-username="activeInstagramUser.username || undefined"
                     />
                 </KeepAlive>
 

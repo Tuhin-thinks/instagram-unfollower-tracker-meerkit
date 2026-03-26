@@ -1264,6 +1264,7 @@ def list_predictions(
     reference_profile_id: str,
     target_profile_id: str | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict]:
     db = get_worker_db()
     query = """
@@ -1275,8 +1276,9 @@ def list_predictions(
     if target_profile_id:
         query += " AND target_profile_id = ?"
         params.append(target_profile_id)
-    query += " ORDER BY requested_at DESC LIMIT ?"
+    query += " ORDER BY requested_at DESC LIMIT ? OFFSET ?"
     params.append(limit)
+    params.append(offset)
     with db as conn:
         cursor = conn.cursor()
         cursor.execute(query, tuple(params))

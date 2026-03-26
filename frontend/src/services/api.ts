@@ -129,7 +129,11 @@ export const createFollowBackPrediction = (payload: {
     })
     .then((r) => r.data)
 
-export const getPredictionHistory = (params?: { target_profile_id?: string; limit?: number }) =>
+export const getPredictionHistory = (params?: {
+  target_profile_id?: string
+  limit?: number
+  offset?: number
+}) =>
   http
     .get<PredictionRecord[]>('/predictions/history', {
       params: {

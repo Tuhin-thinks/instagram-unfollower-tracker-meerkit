@@ -7,6 +7,10 @@ import PredictionStatusBadge from "../components/prediction/PredictionStatusBadg
 import ProbabilityChip from "../components/prediction/ProbabilityChip.vue";
 import TaskProgressBar from "../components/prediction/TaskProgressBar.vue";
 import * as api from "../services/api";
+import {
+    extractApiErrorMessage,
+    mapTargetAccessError,
+} from "../services/targetAccessErrors";
 import type {
     PredictionDetailResponse,
     PredictionFeedbackPayload,
@@ -156,7 +160,10 @@ async function pollTask(taskId: string, predictionId: string) {
             return;
         }
         if (task.status === "error") {
-            errorMessage.value = task.error || "Prediction task failed.";
+            errorMessage.value = mapTargetAccessError(
+                task.error || null,
+                "Prediction task failed.",
+            );
             return;
         }
         statusMessage.value = "Refreshing data for this user. Please wait...";
@@ -215,9 +222,10 @@ async function loadPrediction(username: string) {
             response.prediction.prediction_id,
         );
     } catch (error: unknown) {
-        errorMessage.value =
-            (error as { response?: { data?: { error?: string } } })?.response
-                ?.data?.error || "Could not load prediction for this username.";
+        errorMessage.value = mapTargetAccessError(
+            extractApiErrorMessage(error),
+            "Could not load prediction for this username.",
+        );
     } finally {
         if (!disposed) {
             isLoading.value = false;
@@ -254,9 +262,10 @@ async function refreshPrediction() {
             );
         }
     } catch (error: unknown) {
-        errorMessage.value =
-            (error as { response?: { data?: { error?: string } } })?.response
-                ?.data?.error || "Could not refresh this target right now.";
+        errorMessage.value = mapTargetAccessError(
+            extractApiErrorMessage(error),
+            "Could not refresh this target right now.",
+        );
     } finally {
         if (!disposed) {
             isLoading.value = false;
@@ -289,9 +298,10 @@ async function refreshRelationshipList(relationshipType: "followers" | "followin
         }
         await loadRelationshipCacheStatus(false);
     } catch (error: unknown) {
-        listRefreshError.value[relationshipType] =
-            (error as { response?: { data?: { error?: string } } })?.response
-                ?.data?.error || `Could not refresh ${relationshipType} right now.`;
+        listRefreshError.value[relationshipType] = mapTargetAccessError(
+            extractApiErrorMessage(error),
+            `Could not refresh ${relationshipType} right now.`,
+        );
     } finally {
         listRefreshPending.value[relationshipType] = false;
     }
