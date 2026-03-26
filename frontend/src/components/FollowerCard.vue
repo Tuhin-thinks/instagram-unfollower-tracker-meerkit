@@ -23,7 +23,6 @@ const emit = defineEmits<{
     (e: "linked-accounts-saved", primaryUsername: string): void;
 }>();
 
-const rowRef = ref<HTMLElement | null>(null);
 const linkedAccountsInputRef = ref<HTMLTextAreaElement | null>(null);
 const isLinkedAccountsDialogOpen = ref(false);
 const linkedAccountsInput = ref("");
@@ -102,20 +101,6 @@ async function saveLinkedAccounts() {
     }
 }
 
-function handleDocumentPointerDown(event: MouseEvent) {
-    if (!isLinkedAccountsDialogOpen.value) {
-        return;
-    }
-    const target = event.target;
-    if (!(target instanceof Node)) {
-        return;
-    }
-    if (rowRef.value?.contains(target)) {
-        return;
-    }
-    closeLinkedAccountsDialog();
-}
-
 function handleDocumentKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
         closeLinkedAccountsDialog();
@@ -124,24 +109,23 @@ function handleDocumentKeydown(event: KeyboardEvent) {
 
 watch(isLinkedAccountsDialogOpen, (open) => {
     if (open) {
-        document.addEventListener("mousedown", handleDocumentPointerDown);
         document.addEventListener("keydown", handleDocumentKeydown);
+        document.body.style.overflow = "hidden";
         return;
     }
-    document.removeEventListener("mousedown", handleDocumentPointerDown);
     document.removeEventListener("keydown", handleDocumentKeydown);
+    document.body.style.overflow = "";
 });
 
 onBeforeUnmount(() => {
     clearSuccessTimer();
-    document.removeEventListener("mousedown", handleDocumentPointerDown);
     document.removeEventListener("keydown", handleDocumentKeydown);
+    document.body.style.overflow = "";
 });
 </script>
 
 <template>
     <div
-        ref="rowRef"
         :class="compact ? 'p-3 gap-3' : 'p-4 gap-4'"
         class="group relative bg-[#16213a] rounded-xl border border-white/[0.07] flex items-center card-hover transition-all"
     >
@@ -200,47 +184,57 @@ onBeforeUnmount(() => {
                 View ↗
             </a>
 
-            <!-- Linked accounts dialog popover -->
+        </div>
+
+        <Teleport to="body">
             <div
                 v-if="isLinkedAccountsDialogOpen && showLinkedAccountsAction"
-                class="absolute right-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-5rem))] rounded-2xl border border-white/10 bg-[#1b2030]/95 p-3 shadow-2xl shadow-black/50 backdrop-blur"
-                @click.stop
+                class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+                @click="closeLinkedAccountsDialog"
             >
-                <p class="text-sm font-semibold text-slate-100">
-                    Add linked accounts
-                </p>
-                <p class="mt-1 text-[11px] text-slate-400">
-                    Primary account: @{{ follower.username }}
-                </p>
-                <textarea
-                    ref="linkedAccountsInputRef"
-                    v-model="linkedAccountsInput"
-                    rows="3"
-                    class="input-dark mt-3 text-sm"
-                    placeholder="Enter username, profile link, or user ID"
-                />
-                <p v-if="linkedAccountsError" class="mt-2 text-[11px] text-rose-300">
-                    {{ linkedAccountsError }}
-                </p>
-                <div class="mt-3 flex items-center justify-end gap-2">
-                    <button
-                        type="button"
-                        class="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-white/[0.05]"
-                        :disabled="isSavingLinkedAccounts"
-                        @click="closeLinkedAccountsDialog"
+                <div
+                    class="w-full max-w-md rounded-2xl border border-white/10 bg-[#1b2030]/95 p-4 shadow-2xl shadow-black/50 backdrop-blur"
+                    @click.stop
+                >
+                    <p class="text-sm font-semibold text-slate-100">
+                        Add linked accounts
+                    </p>
+                    <p class="mt-1 text-[11px] text-slate-400">
+                        Primary account: @{{ follower.username }}
+                    </p>
+                    <textarea
+                        ref="linkedAccountsInputRef"
+                        v-model="linkedAccountsInput"
+                        rows="3"
+                        class="input-dark mt-3 text-sm"
+                        placeholder="Enter username, profile link, or user ID"
+                    />
+                    <p
+                        v-if="linkedAccountsError"
+                        class="mt-2 text-[11px] text-rose-300"
                     >
-                        Cancel
-                    </button>
-                    <button
-                        type="button"
-                        class="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-                        :disabled="isSavingLinkedAccounts"
-                        @click="saveLinkedAccounts"
-                    >
-                        {{ isSavingLinkedAccounts ? "Adding..." : "Add" }}
-                    </button>
+                        {{ linkedAccountsError }}
+                    </p>
+                    <div class="mt-3 flex items-center justify-end gap-2">
+                        <button
+                            type="button"
+                            class="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-slate-300 transition-colors hover:bg-white/[0.05]"
+                            :disabled="isSavingLinkedAccounts"
+                            @click="closeLinkedAccountsDialog"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                            :disabled="isSavingLinkedAccounts"
+                            @click="saveLinkedAccounts"
+                        >
+                            {{ isSavingLinkedAccounts ? "Adding..." : "Add" }}
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
+        </Teleport>
     </div>
 </template>
