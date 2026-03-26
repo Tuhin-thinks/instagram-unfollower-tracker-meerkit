@@ -91,6 +91,11 @@ const targetProfile = computed(() => {
     return payload?.target_profile ?? null;
 });
 
+const targetProfileImageCacheKey = computed(() => {
+    const raw = targetProfile.value?.profile_pic_id;
+    return typeof raw === "string" && raw.trim() ? raw : null;
+});
+
 const ambiguousProbability = computed(() => {
     const payload = prediction.value?.result_payload as {
         ambiguous_probability?: boolean;
@@ -424,6 +429,7 @@ async function submitFeedback() {
                         :pk-id="prediction.target_profile_id"
                         :profile-id="props.profileId"
                         :alt="prediction.target_username || 'target profile'"
+                        :cache-key="targetProfileImageCacheKey"
                         class="w-14 h-14"
                     />
                     <div class="min-w-0">

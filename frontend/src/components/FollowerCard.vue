@@ -20,6 +20,7 @@ defineProps<{
             :pk-id="follower.pk_id"
             :profile-id="profileId"
             :alt="follower.username"
+            :cache-key="follower.profile_pic_id"
             :class="compact ? 'w-9 h-9' : 'w-12 h-12'"
         />
 

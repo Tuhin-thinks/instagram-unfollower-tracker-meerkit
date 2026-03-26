@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 import insta_interface as ii
-from backend.services import db_service, relationship_cache
+from backend.services import db_service, relationship_cache, user_details_cache
+from backend.services.downloader import enqueue_image_download
 from backend.services.instagram_gateway import instagram_gateway
 
 _PREDICTION_TTL = timedelta(days=7)
@@ -54,6 +55,8 @@ def _metadata_feature_subset(metadata: dict[str, object] | None) -> dict[str, ob
         "account_type": _as_str(metadata.get("account_type")),
         "is_professional_account": _as_bool(metadata.get("is_professional_account")),
         "has_highlight_reels": _as_bool(metadata.get("has_highlight_reels")),
+        "profile_pic_id": _as_str(metadata.get("profile_pic_id")),
+        "profile_pic_url": _as_str(metadata.get("profile_pic_url")),
     }
 
 
@@ -78,6 +81,31 @@ def _latest_prediction_metadata(
     if not isinstance(target_profile, dict):
         return None
     return target_profile
+
+
+def _refresh_target_profile_image_cache_if_changed(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+    previous_metadata: dict[str, object] | None,
+    current_metadata: dict[str, object],
+) -> None:
+    previous_profile_pic_id = _as_str((previous_metadata or {}).get("profile_pic_id"))
+    current_profile_pic_id = _as_str(current_metadata.get("profile_pic_id"))
+    current_profile_pic_url = _as_str(current_metadata.get("profile_pic_url"))
+    if not (
+        previous_profile_pic_id
+        and current_profile_pic_id
+        and current_profile_pic_url
+        and previous_profile_pic_id != current_profile_pic_id
+    ):
+        return
+    enqueue_image_download(
+        app_user_id=app_user_id,
+        instagram_user_id=reference_profile_id,
+        profile_pk_id=target_profile_id,
+        profile_pic_url=current_profile_pic_url,
+    )
 
 
 def _build_profile(credentials: dict) -> ii.InstagramProfile:
@@ -929,6 +957,11 @@ def refresh_followback_prediction(
     target_profile_id = prediction["target_profile_id"]
     reference_profile_id = prediction["reference_profile_id"]
     app_user_id = prediction["app_user_id"]
+    previous_target_metadata = user_details_cache.load_target(
+        app_user_id,
+        reference_profile_id,
+        target_profile_id,
+    )
 
     metadata = instagram_gateway.get_target_user_data(
         app_user_id=app_user_id,
@@ -937,6 +970,14 @@ def refresh_followback_prediction(
         target_user_id=target_profile_id,
         caller_service="account_handler",
         caller_method="refresh_followback_prediction",
+        force_refresh=True,
+    )
+    _refresh_target_profile_image_cache_if_changed(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=target_profile_id,
+        previous_metadata=previous_target_metadata,
+        current_metadata=metadata,
     )
     metadata_time = datetime.now().isoformat()
     metadata_username = _as_str(metadata.get("username"))
@@ -986,6 +1027,7 @@ def refresh_followback_prediction(
                 target_user_id=target_id,
                 caller_service="account_handler",
                 caller_method="refresh_followback_prediction",
+                force_refresh=True,
             ),
             "following": lambda target_id: instagram_gateway.get_target_following_v2(
                 app_user_id=app_user_id,
@@ -994,6 +1036,7 @@ def refresh_followback_prediction(
                 target_user_id=target_id,
                 caller_service="account_handler",
                 caller_method="refresh_followback_prediction",
+                force_refresh=True,
             ),
         }
         for relationship in sorted(relationships_to_refresh):
@@ -1134,6 +1177,11 @@ def get_target_relationship_cache_status(
     reference_profile_id = instagram_user["instagram_user_id"]
     if sync_counts:
         profile = _build_profile(instagram_user)
+        previous_target_metadata = user_details_cache.load_target(
+            app_user_id,
+            reference_profile_id,
+            target_profile_id,
+        )
         metadata = instagram_gateway.get_target_user_data(
             app_user_id=app_user_id,
             instagram_user_id=reference_profile_id,
@@ -1141,6 +1189,14 @@ def get_target_relationship_cache_status(
             target_user_id=target_profile_id,
             caller_service="account_handler",
             caller_method="get_target_relationship_cache_status",
+            force_refresh=True,
+        )
+        _refresh_target_profile_image_cache_if_changed(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+            previous_metadata=previous_target_metadata,
+            current_metadata=metadata,
         )
         metadata_time = datetime.now().isoformat()
         metadata_follower_count = _as_int(metadata.get("account_followers_count"))

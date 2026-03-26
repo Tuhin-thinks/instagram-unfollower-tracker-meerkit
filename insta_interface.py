@@ -398,6 +398,7 @@ def _extract_user_summary(
         "is_verified": bool(user_data.get("is_verified", False)),
         "is_professional_account": is_professional_account,
         "has_highlight_reels": has_highlight_reels,
+        "profile_pic_id": user_data.get("profile_pic_id"),
         "profile_pic_url": user_data.get("profile_pic_url"),
         "user_id": str(user_data.get("id") or user_data.get("pk") or ""),
         "category": category,

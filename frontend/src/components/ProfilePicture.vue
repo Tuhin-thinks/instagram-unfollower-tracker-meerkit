@@ -1,13 +1,21 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 
 const props = defineProps<{
     pkId: string;
     profileId: string;
     alt: string;
+    cacheKey?: string | null;
 }>();
 
 const hasError = ref(false);
+const imageSrc = computed(() => {
+    const params = new URLSearchParams({ profile_id: props.profileId });
+    if (props.cacheKey) {
+        params.set("img_v", props.cacheKey);
+    }
+    return `/api/image/${props.pkId}?${params.toString()}`;
+});
 </script>
 
 <template>
@@ -16,7 +24,7 @@ const hasError = ref(false);
     >
         <img
             v-if="!hasError"
-            :src="`/api/image/${props.pkId}?profile_id=${props.profileId}`"
+            :src="imageSrc"
             :alt="props.alt"
             class="w-full h-full object-cover"
             loading="lazy"

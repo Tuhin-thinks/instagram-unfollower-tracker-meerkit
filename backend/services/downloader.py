@@ -4,6 +4,7 @@ import requests
 
 from backend.config import IMAGE_CACHE_DIR
 from backend.extensions import image_download_queue
+from backend.services import db_service
 from backend.services.instagram_api_usage import instagram_api_usage_tracker
 
 
@@ -15,7 +16,8 @@ def process_img_download(
 ) -> str | None:
     """Downloads the profile image for a given pk_id and profile_pic_url, and caches it on disk."""
     img_path = IMAGE_CACHE_DIR / f"{profile_pk_id}.jpeg"
-    if img_path.exists():
+    cached_url = db_service.get_latest_cached_image_url(profile_pk_id)
+    if cached_url == profile_pic_url and img_path.exists():
         return str(img_path)
 
     response = instagram_api_usage_tracker.track_call(

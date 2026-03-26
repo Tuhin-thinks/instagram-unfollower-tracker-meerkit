@@ -114,10 +114,36 @@ def retrieve_img_path_by_pk_id(pk_id: str) -> str | None:
     with db_handler as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT local_path FROM image_cache WHERE profile_id = ?", (pk_id,)
+            """
+            SELECT local_path
+            FROM image_cache
+            WHERE profile_id = ?
+            ORDER BY create_date DESC
+            LIMIT 1
+            """,
+            (pk_id,),
         )
         row = cursor.fetchone()
         return row["local_path"] if row else None
+
+
+def get_latest_cached_image_url(pk_id: str) -> str | None:
+    """Return the latest cached image URL for a profile id, if present."""
+    db_handler = get_worker_db()
+    with db_handler as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT url
+            FROM image_cache
+            WHERE profile_id = ?
+            ORDER BY create_date DESC
+            LIMIT 1
+            """,
+            (pk_id,),
+        )
+        row = cursor.fetchone()
+        return row["url"] if row else None
 
 
 def get_latest_profile_pic_url(

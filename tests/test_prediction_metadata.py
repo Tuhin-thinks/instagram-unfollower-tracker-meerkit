@@ -124,6 +124,53 @@ def test_compute_followback_chances_uses_richer_metadata(monkeypatch):
     )
 
 
+def test_compute_followback_chances_caps_extreme_following_ratio(monkeypatch):
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_target_profile",
+        lambda app_user_id, reference_profile_id, target_profile_id: {
+            "username": "extreme.ratio",
+            "is_private": False,
+            "is_verified": False,
+            "me_following_account": False,
+            "being_followed_by_account": False,
+            "follower_count": 120,
+            "following_count": 900,
+        },
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_latest_scanned_profile_ids",
+        lambda app_user_id, reference_profile_id: set(),
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_target_profile_relationship_ids",
+        lambda app_user_id, reference_profile_id, target_profile_id, relationship_type: (
+            set()
+        ),
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "list_labeled_followback_predictions",
+        lambda app_user_id, reference_profile_id, limit=400: [],
+    )
+
+    result = account_handler.compute_followback_chances(
+        pk_id="target_extreme",
+        reference_profile_id="ig_123",
+        app_user_id="app_test_user",
+        metadata={"mutual_followers_count": 0, "media_count": 20},
+    )
+
+    assert result["feature_breakdown"]["following_to_follower_ratio"] == 7.5
+    assert result["followback_probability"] <= 0.1
+    assert any(
+        "Extreme following-to-follower ratio guardrail capped this prediction" in reason
+        for reason in result["reasons"]
+    )
+
+
 def test_request_followback_prediction_reuses_cached_metadata(monkeypatch):
     monkeypatch.setattr(
         account_handler,
