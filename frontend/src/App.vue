@@ -10,6 +10,9 @@ import TasksView from "./views/TasksView.vue";
 import AutomationView from "./views/AutomationView.vue";
 import IntelligentBatchFollowAutomationView from "./views/IntelligentBatchFollowAutomationView.vue";
 import BatchUnfollowAutomationView from "./views/BatchUnfollowAutomationView.vue";
+import LeftRightFollowCompareAutomationView from "./views/LeftRightFollowCompareAutomationView.vue";
+import LeftRightFollowCompareHistoryView from "./views/LeftRightFollowCompareHistoryView.vue";
+import LeftRightFollowCompareResultsView from "./views/LeftRightFollowCompareResultsView.vue";
 import TechBackground from "./components/TechBackground.vue";
 import AltAccountsRegistryPanel from "./components/automation/AltAccountsRegistryPanel.vue";
 import * as api from "./services/api";
@@ -31,6 +34,9 @@ type AppView =
     | "automation"
     | "automation-intelligent-follow"
     | "automation-batch-unfollow"
+    | "automation-left-right-compare"
+    | "automation-left-right-compare-history"
+    | "automation-left-right-compare-results"
     | "discovery"
     | "tasks"
     | "admin"
@@ -83,6 +89,9 @@ const currentView = computed<AppView>(() => {
             "automation",
             "automation-intelligent-follow",
             "automation-batch-unfollow",
+            "automation-left-right-compare",
+            "automation-left-right-compare-history",
+            "automation-left-right-compare-results",
             "discovery",
             "tasks",
             "admin",
@@ -98,7 +107,10 @@ const activeTab = computed(() => {
     if (
         currentView.value === "automation" ||
         currentView.value === "automation-intelligent-follow" ||
-        currentView.value === "automation-batch-unfollow"
+        currentView.value === "automation-batch-unfollow" ||
+        currentView.value === "automation-left-right-compare" ||
+        currentView.value === "automation-left-right-compare-history" ||
+        currentView.value === "automation-left-right-compare-results"
     ) {
         return "automation";
     }
@@ -567,6 +579,7 @@ const discoveryUsername = computed(() => {
                         :profile-username="activeInstagramUser.username || undefined"
                         @open-intelligent-batch-follow="goTo('automation-intelligent-follow')"
                         @open-batch-unfollow="goTo('automation-batch-unfollow')"
+                        @open-left-right-compare="goTo('automation-left-right-compare')"
                     />
                 </KeepAlive>
 
@@ -585,6 +598,32 @@ const discoveryUsername = computed(() => {
                         :profile-id="activeInstagramUser.instagram_user_id"
                         :profile-username="activeInstagramUser.username || undefined"
                         @back-to-automation="goTo('automation')"
+                    />
+                </KeepAlive>
+
+                <KeepAlive>
+                    <LeftRightFollowCompareAutomationView
+                        v-if="currentView === 'automation-left-right-compare' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        :profile-username="activeInstagramUser.username || undefined"
+                        @back-to-automation="goTo('automation')"
+                    />
+                </KeepAlive>
+
+                <KeepAlive>
+                    <LeftRightFollowCompareHistoryView
+                        v-if="currentView === 'automation-left-right-compare-history' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        :profile-username="activeInstagramUser.username || undefined"
+                    />
+                </KeepAlive>
+
+                <KeepAlive>
+                    <LeftRightFollowCompareResultsView
+                        v-if="currentView === 'automation-left-right-compare-results' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        :profile-username="activeInstagramUser.username || undefined"
+                        @back-to-compare="goTo('automation-left-right-compare')"
                     />
                 </KeepAlive>
 

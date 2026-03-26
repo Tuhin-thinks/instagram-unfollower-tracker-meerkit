@@ -19,6 +19,21 @@ const router = createRouter({
       name: 'automation-batch-unfollow',
       component: RoutePlaceholder,
     },
+    {
+      path: '/automation/left-right-compare',
+      name: 'automation-left-right-compare',
+      component: RoutePlaceholder,
+    },
+    {
+      path: '/automation/left-right-compare/results/:actionId?',
+      name: 'automation-left-right-compare-results',
+      component: RoutePlaceholder,
+    },
+    {
+      path: '/automation/left-right-compare/history',
+      name: 'automation-left-right-compare-history',
+      component: RoutePlaceholder,
+    },
     { path: '/discovery/:username?', name: 'discovery', component: RoutePlaceholder },
     { path: '/tasks', name: 'tasks', component: RoutePlaceholder },
     { path: '/admin', name: 'admin', component: RoutePlaceholder },

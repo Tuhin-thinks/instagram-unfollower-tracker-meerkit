@@ -272,6 +272,18 @@ export const prepareBatchUnfollow = (payload: {
     })
     .then((r) => r.data)
 
+export const prepareLeftRightCompare = (payload: {
+  left_targets: string[]
+  right_targets: string[]
+  max_left_count?: number
+  max_right_count?: number
+}) =>
+  http
+    .post<AutomationActionResult>('/automation/left-right-compare/prepare', payload, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
 export const confirmAutomationAction = (actionId: string) =>
   http
     .post<AutomationAction>(`/automation/actions/${actionId}/confirm`, null, {
@@ -293,10 +305,17 @@ export const getAutomationAction = (actionId: string) =>
     })
     .then((r) => r.data)
 
-export const listAutomationActions = () =>
+export const listAutomationActions = (options?: {
+  action_type?: 'batch_follow' | 'batch_unfollow' | 'left_right_compare'
+  limit?: number
+}) =>
   http
     .get<AutomationActionsResponse>('/automation/actions', {
-      params: { profile_id: activeInstagramUserId },
+      params: {
+        profile_id: activeInstagramUserId,
+        action_type: options?.action_type,
+        limit: options?.limit,
+      },
     })
     .then((r) => r.data)
 

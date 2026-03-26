@@ -7,6 +7,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     openIntelligentBatchFollow: [];
     openBatchUnfollow: [];
+    openLeftRightCompare: [];
 }>();
 
 const automationCards = [
@@ -32,9 +33,25 @@ const automationCards = [
         accentClass: "text-rose-200",
         iconClass: "bg-rose-400/15 border-rose-300/30 text-rose-200",
     },
+    {
+        key: "left-right-compare",
+        icon: "🧭",
+        status: "New",
+        title: "Left-Right Follow Comparison",
+        description:
+            "Compare two profile sets and see who on the right side follows each left-side profile, plus who is missing.",
+        tags: ["Directional Check", "Graph + Matrix", "Queued Workers"],
+        accentClass: "text-amber-200",
+        iconClass: "bg-amber-400/15 border-amber-300/30 text-amber-200",
+    },
 ] as const;
 
 function openCard(cardKey: string) {
+    if (cardKey === "left-right-compare") {
+        emit("openLeftRightCompare");
+        return;
+    }
+
     if (cardKey === "unfollow") {
         emit("openBatchUnfollow");
         return;

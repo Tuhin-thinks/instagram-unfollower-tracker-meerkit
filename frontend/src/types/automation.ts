@@ -96,7 +96,55 @@ export interface AutomationAction {
   items_by_status?: Record<string, AutomationActionItem[]>
 }
 
-export type AutomationActionType = 'batch_follow' | 'batch_unfollow'
+export interface LeftRightCompareConnection {
+  right_identity_key: string | null
+  right_display: string | null
+  right_user_id: string | null
+  is_following: boolean
+  resolved: boolean
+}
+
+export interface LeftRightCompareRow {
+  left_item_id: string
+  left_raw_input: string | null
+  left_display: string | null
+  left_user_id: string | null
+  left_followers_count: number
+  follows_count: number
+  missing_count: number
+  unresolved_count: number
+  connections: LeftRightCompareConnection[]
+}
+
+export interface LeftRightCompareTarget {
+  raw_input: string
+  display_username: string | null
+  normalized_username: string | null
+  normalized_user_id: string | null
+  identity_key: string | null
+}
+
+export interface LeftRightCompareResult {
+  schema_version: number
+  status: string
+  left_rows: LeftRightCompareRow[]
+  right_targets: LeftRightCompareTarget[]
+  totals: {
+    left_total: number
+    right_total: number
+    relations_total: number
+    follows_total: number
+    missing_total: number
+    unresolved_total: number
+  }
+}
+
+export interface LeftRightCompareActionConfig {
+  max_left_count?: number
+  max_right_count?: number
+  comparison_result?: LeftRightCompareResult
+  [key: string]: unknown
+}
 
 export interface AutomationActionsResponse {
   actions: AutomationAction[]
@@ -109,9 +157,14 @@ export interface AutomationActionResult {
   status: string
   selected_count: number
   excluded_count: number
+  right_selected_count?: number
+  right_excluded_count?: number
   selected_items: { raw_input: string; display_username: string | null }[]
   excluded_items: { raw_input: string; exclusion_reason: string | null }[]
+  right_excluded_items?: { raw_input: string; exclusion_reason: string | null }[]
 }
+
+export type AutomationActionType = 'batch_follow' | 'batch_unfollow' | 'left_right_compare'
 
 export interface SafelistEntry {
   safelist_id: string
