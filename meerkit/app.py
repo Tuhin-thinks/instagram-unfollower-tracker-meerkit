@@ -10,16 +10,41 @@ from flask import Flask
 from flask_cors import CORS
 
 
+def _is_dev_or_test_environment() -> bool:
+    return (
+        os.environ.get("FLASK_ENV") in {"development", "testing"}
+        or os.environ.get("FLASK_DEBUG") == "1"
+        or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    )
+
+
+def _resolve_secret_key() -> str:
+    secret_key = os.environ.get("APP_SECRET_KEY")
+    if secret_key:
+        return secret_key
+    if os.environ.get("FLASK_ENV") == "production":
+        raise RuntimeError("APP_SECRET_KEY environment variable is required")
+    if _is_dev_or_test_environment():
+        return "dev-secret-change-me"
+    return "dev-secret-change-me"
+
+
+def _resolve_cors_origins() -> list[str]:
+    raw_origins = os.environ.get(
+        "CORS_ORIGINS", "http://localhost:5173,http://localhost:4173"
+    )
+    origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return origins or ["http://localhost:5173", "http://localhost:4173"]
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
-    app.config["SECRET_KEY"] = os.environ.get("APP_SECRET_KEY", "dev-secret-change-me")
+    app.config["SECRET_KEY"] = _resolve_secret_key()
 
     # Allow Vite dev server (5173) and preview server (4173) in development
     CORS(
         app,
-        resources={
-            r"/api/*": {"origins": ["http://localhost:5173", "http://localhost:4173"]}
-        },
+        resources={r"/api/*": {"origins": _resolve_cors_origins()}},
     )
 
     from meerkit.routes.auth import bp as auth_bp
@@ -56,4 +81,7 @@ def create_app() -> Flask:
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(
+        debug=os.environ.get("FLASK_DEBUG") == "1",
+        port=int(os.environ.get("PORT", "5000")),
+    )

@@ -27,7 +27,6 @@ import type { AutomationCacheEfficiencyResponse } from "./types/automation";
 const queryClient = useQueryClient();
 const route = useRoute();
 const router = useRouter();
-const staleThresholdMs = 24 * 60 * 60 * 1000;
 
 type AppView =
     | "dashboard"
@@ -311,25 +310,6 @@ const parsedCookiePreview = computed<CookiePreview | null>(() => {
     if (!raw) return null;
     return parseCookieString(raw);
 });
-
-function parseIsoTime(value?: string | null): number | null {
-    if (!value) return null;
-    const millis = Date.parse(value);
-    return Number.isNaN(millis) ? null : millis;
-}
-
-function isCredentialStale(value?: string | null): boolean {
-    const timestamp = parseIsoTime(value);
-    if (!timestamp) return false;
-    return Date.now() - timestamp > staleThresholdMs;
-}
-
-function hasStaleCredentials(user: InstagramUserRecord): boolean {
-    return (
-        isCredentialStale(user.csrf_token_added_at ?? user.created_at) ||
-        isCredentialStale(user.session_id_added_at ?? user.created_at)
-    );
-}
 
 function clearDetailsCacheInterval(): void {
     if (!detailsCacheSizeInterval) {
@@ -698,12 +678,8 @@ const discoveryUsername = computed(() => {
                                         v-if="activeInstagramUser?.instagram_user_id === u.instagram_user_id"
                                         class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-400/10 text-emerald-400 border border-emerald-400/20"
                                     >Active</span>
-                                    <span
-                                        v-if="hasStaleCredentials(u)"
-                                        class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-400 border border-amber-400/20"
-                                    >Credentials old</span>
                                 </div>
-                                <p class="text-xs text-slate-500 mt-0.5">USER_ID: {{ u.user_id }}</p>
+                                <p class="text-xs text-slate-500 mt-0.5">Instagram ID: {{ u.instagram_user_id }}</p>
                             </button>
                         </div>
                     </section>
@@ -788,21 +764,7 @@ const discoveryUsername = computed(() => {
                         </p>
                         <p><span class="text-slate-400 font-medium">Instagram User ID:</span> <span class="text-slate-200">{{ selectedInstagramUser.instagram_user_id }}</span></p>
                         <p v-if="selectedInstagramUser.username"><span class="text-slate-400 font-medium">Username:</span> <span class="text-slate-200">{{ selectedInstagramUser.username }}</span></p>
-                        <p><span class="text-slate-400 font-medium">USER_ID:</span> <span class="text-slate-200">{{ selectedInstagramUser.user_id }}</span></p>
-                        <p><span class="text-slate-400 font-medium">CSRF_TOKEN:</span> <span class="text-slate-300 break-all text-xs">{{ selectedInstagramUser.csrf_token }}</span></p>
-                        <p><span class="text-slate-400 font-medium">SESSION_ID:</span> <span class="text-slate-300 break-all text-xs">{{ selectedInstagramUser.session_id }}</span></p>
-                        <p><span class="text-slate-400 font-medium">Created:</span> <span class="text-slate-200">{{ new Date(selectedInstagramUser.created_at).toLocaleString() }}</span></p>
-                        <p>
-                            <span class="text-slate-400 font-medium">CSRF token added:</span>
-                            <span class="text-slate-200">{{ selectedInstagramUser.csrf_token_added_at ? new Date(selectedInstagramUser.csrf_token_added_at).toLocaleString() : "Unknown" }}</span>
-                        </p>
-                        <p>
-                            <span class="text-slate-400 font-medium">Session ID added:</span>
-                            <span class="text-slate-200">{{ selectedInstagramUser.session_id_added_at ? new Date(selectedInstagramUser.session_id_added_at).toLocaleString() : "Unknown" }}</span>
-                        </p>
-                        <p v-if="hasStaleCredentials(selectedInstagramUser)" class="text-amber-400 text-xs mt-1">
-                            ⚠ One or more credentials are older than 1 day.
-                        </p>
+                        <p v-if="selectedInstagramUser.created_at"><span class="text-slate-400 font-medium">Created:</span> <span class="text-slate-200">{{ new Date(selectedInstagramUser.created_at).toLocaleString() }}</span></p>
 
                         <div class="mt-5 flex gap-2">
                             <button

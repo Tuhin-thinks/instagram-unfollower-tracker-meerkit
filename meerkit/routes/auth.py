@@ -5,6 +5,33 @@ from meerkit.services import auth_service, db_service
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 
+def _sanitize_instagram_user_payload(instagram_user: dict | None) -> dict | None:
+    """Apply a route-level safety filter for instagram user response payloads."""
+    return auth_service.sanitize_instagram_user(instagram_user)
+
+
+def _sanitize_me_payload(payload: dict) -> dict:
+    """Apply defense-in-depth filtering to /me-like response payloads."""
+    sanitized = dict(payload)
+    instagram_users = payload.get("instagram_users")
+    if isinstance(instagram_users, list):
+        sanitized["instagram_users"] = auth_service.sanitize_instagram_users(
+            instagram_users
+        )
+    else:
+        sanitized["instagram_users"] = []
+
+    active_instagram_user = payload.get("active_instagram_user")
+    if isinstance(active_instagram_user, dict):
+        sanitized["active_instagram_user"] = _sanitize_instagram_user_payload(
+            active_instagram_user
+        )
+    else:
+        sanitized["active_instagram_user"] = None
+
+    return sanitized
+
+
 def _current_app_user() -> tuple[str, str] | None:
     """Return the logged-in app user id and name from session state."""
     app_user_id = session.get("app_user_id")
@@ -52,7 +79,11 @@ def login():
     session["app_user_id"] = user["app_user_id"]
     session["app_user_name"] = user["name"]
     _sync_active_instagram_user_session(user["app_user_id"])
-    return jsonify(auth_service.build_me_payload(user["app_user_id"], user["name"]))
+    return jsonify(
+        _sanitize_me_payload(
+            auth_service.build_me_payload(user["app_user_id"], user["name"])
+        )
+    )
 
 
 @bp.post("/logout")
@@ -75,7 +106,9 @@ def me():
     app_user_id, app_user_name = current
     _sync_active_instagram_user_session(app_user_id)
 
-    return jsonify(auth_service.build_me_payload(app_user_id, app_user_name))
+    return jsonify(
+        _sanitize_me_payload(auth_service.build_me_payload(app_user_id, app_user_name))
+    )
 
 
 @bp.get("/instagram-api-usage")
@@ -112,7 +145,7 @@ def list_instagram_users():
     if not current:
         return jsonify({"error": "Not logged in"}), 401
     app_user_id, _app_user_name = current
-    return jsonify(auth_service.get_instagram_users(app_user_id))
+    return jsonify(auth_service.sanitize_instagram_users(auth_service.get_instagram_users(app_user_id)))
 
 
 @bp.post("/instagram-users")
@@ -144,8 +177,10 @@ def create_instagram_user():
 
     return jsonify(
         {
-            "instagram_user": instagram_user,
-            "me": auth_service.build_me_payload(app_user_id, app_user_name),
+            "instagram_user": _sanitize_instagram_user_payload(instagram_user),
+            "me": _sanitize_me_payload(
+                auth_service.build_me_payload(app_user_id, app_user_name)
+            ),
         }
     ), 201
 
@@ -161,7 +196,7 @@ def get_instagram_user_detail(instagram_user_id: str):
     instagram_user = auth_service.get_instagram_user(app_user_id, instagram_user_id)
     if not instagram_user:
         return jsonify({"error": "Instagram user not found"}), 404
-    return jsonify(instagram_user)
+    return jsonify(_sanitize_instagram_user_payload(instagram_user))
 
 
 @bp.patch("/instagram-users/<instagram_user_id>")
@@ -196,8 +231,10 @@ def patch_instagram_user(instagram_user_id: str):
 
     return jsonify(
         {
-            "instagram_user": instagram_user,
-            "me": auth_service.build_me_payload(app_user_id, app_user_name),
+            "instagram_user": _sanitize_instagram_user_payload(instagram_user),
+            "me": _sanitize_me_payload(
+                auth_service.build_me_payload(app_user_id, app_user_name)
+            ),
             "message": "Instagram account updated",
         }
     )
@@ -223,9 +260,11 @@ def select_instagram_user(instagram_user_id: str):
 
     return jsonify(
         {
-            "active_instagram_user": instagram_user,
+            "active_instagram_user": _sanitize_instagram_user_payload(instagram_user),
             "message": f"Active account set to {instagram_user['name']}",
-            "me": auth_service.build_me_payload(app_user_id, app_user_name),
+            "me": _sanitize_me_payload(
+                auth_service.build_me_payload(app_user_id, app_user_name)
+            ),
         }
     )
 
@@ -245,7 +284,12 @@ def delete_instagram_user(instagram_user_id: str):
     _sync_active_instagram_user_session(app_user_id)
 
     return jsonify(
-        {"ok": True, "me": auth_service.build_me_payload(app_user_id, app_user_name)}
+        {
+            "ok": True,
+            "me": _sanitize_me_payload(
+                auth_service.build_me_payload(app_user_id, app_user_name)
+            ),
+        }
     )
 
 
@@ -260,5 +304,10 @@ def delete_all_instagram_users():
     auth_service.delete_all_instagram_users(app_user_id)
     _sync_active_instagram_user_session(app_user_id)
     return jsonify(
-        {"ok": True, "me": auth_service.build_me_payload(app_user_id, app_user_name)}
+        {
+            "ok": True,
+            "me": _sanitize_me_payload(
+                auth_service.build_me_payload(app_user_id, app_user_name)
+            ),
+        }
     )

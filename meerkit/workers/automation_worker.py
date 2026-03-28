@@ -5,8 +5,8 @@ Modeled after prediction_worker but backed by durable automation_actions /
 automation_action_items DB state instead of transient queue-only payloads.
 """
 
+import logging
 import threading
-import traceback
 
 from meerkit.config import MAX_AUTOMATION_WORKERS
 from meerkit.extensions import automation_action_queue
@@ -21,6 +21,7 @@ from meerkit.services.db_service import close_worker_db, init_worker_db
 
 _worker_lock = threading.Lock()
 _worker_threads: list[threading.Thread] = []
+logger = logging.getLogger(__name__)
 
 
 def recover_queued_actions(app_user_id: str) -> int:
@@ -111,7 +112,7 @@ def start_automation_worker() -> None:
                 )
 
             except Exception as exc:
-                traceback.print_exc()
+                logger.exception("Automation worker failed action execution")
                 automation_runner.mark_action_error(action_id, str(exc))
             finally:
                 automation_action_queue.task_done()

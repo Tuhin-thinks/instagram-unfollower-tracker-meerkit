@@ -24,16 +24,18 @@ class _SerializableEncoder(json.JSONEncoder):
 
     def default(self, o: object) -> object:
         if isinstance(o, set):
-            logger.warning(f"Converting set to list during JSON encoding. Set: {o!r}")
+            logger.warning("Converting set to list during JSON encoding")
             return list(o)
         elif isinstance(o, (bytes, bytearray)):
             logger.warning(
-                f"Converting bytes/bytearray to string during JSON encoding: {type(o).__name__}"
+                "Converting bytes/bytearray to string during JSON encoding: %s",
+                type(o).__name__,
             )
             return o.hex()
         elif hasattr(o, "__dict__"):
             logger.warning(
-                f"Converting {type(o).__name__} object to dict during JSON encoding"
+                "Converting %s object to dict during JSON encoding",
+                type(o).__name__,
             )
             return (
                 asdict(o) if is_dataclass(o) and not isinstance(o, type) else o.__dict__

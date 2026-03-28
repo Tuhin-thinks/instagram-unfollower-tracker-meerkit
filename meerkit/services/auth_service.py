@@ -102,6 +102,23 @@ def get_instagram_users(app_user_id: str) -> list[dict]:
     return payload if isinstance(payload, list) else []
 
 
+def sanitize_instagram_user(user: dict | None) -> dict | None:
+    """Return a response-safe instagram user object without credential fields."""
+    if not user:
+        return None
+    return {
+        "instagram_user_id": user.get("instagram_user_id"),
+        "name": user.get("name"),
+        "username": user.get("username"),
+        "created_at": user.get("created_at"),
+    }
+
+
+def sanitize_instagram_users(users: list[dict]) -> list[dict]:
+    """Sanitize a list of instagram users for API responses."""
+    return [safe for safe in (sanitize_instagram_user(user) for user in users) if safe]
+
+
 def _safe_fetch_instagram_username(
     app_user_id: str, csrf_token: str, session_id: str, user_id: str
 ) -> str | None:
@@ -339,8 +356,8 @@ def build_me_payload(app_user_id: str, name: str) -> dict:
     return {
         "app_user_id": app_user_id,
         "name": name,
-        "instagram_users": instagram_users,
-        "active_instagram_user": active_user,
+        "instagram_users": sanitize_instagram_users(instagram_users),
+        "active_instagram_user": sanitize_instagram_user(active_user),
     }
 
 

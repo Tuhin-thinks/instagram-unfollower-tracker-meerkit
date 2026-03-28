@@ -1,5 +1,5 @@
+import logging
 import threading
-import traceback
 from typing import Any, cast
 
 from meerkit.config import MAX_IMAGE_DOWNLOAD_WORKERS
@@ -13,6 +13,7 @@ from meerkit.services.db_service import (
 
 _worker_lock = threading.Lock()
 _worker_threads: list[threading.Thread] = []
+logger = logging.getLogger(__name__)
 
 
 def start_download_worker() -> None:
@@ -56,7 +57,7 @@ def start_download_worker() -> None:
                     cache_image_path([(profile_pk_id, profile_pic_url, img_path)])
 
             except Exception as _:
-                traceback.print_exc()
+                logger.exception("Download worker failed processing image payload")
             finally:
                 image_download_queue.task_done()
             # delay to not overwhelm Instagram with too many requests in a short time, especially since some scans may have many followers

@@ -18,6 +18,7 @@ Endpoints:
     DELETE /api/automation/alternative-account-links/<primary>/<alt> — Remove one alt link
 """
 
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -46,6 +47,7 @@ from meerkit.services.automation_service import (
 from meerkit.services.instagram_gateway import instagram_gateway
 
 bp = Blueprint("automation", __name__, url_prefix="/api/automation")
+logger = logging.getLogger(__name__)
 
 _VALID_LIST_TYPES = {"do_not_follow", "never_unfollow"}
 _READ_USAGE_CATEGORIES = {
@@ -268,8 +270,9 @@ def get_following_users():
             caller_method="get_following_users",
             force_refresh=force_refresh,
         )
-    except Exception as exc:
-        return jsonify({"error": f"Failed to fetch following list: {exc}"}), 502
+    except Exception:
+        logger.exception("Failed to fetch following list from Instagram gateway")
+        return jsonify({"error": "Failed to fetch following list"}), 502
 
     follower_ids = {record.pk_id for record in follower_records}
     user_count_map = _load_following_user_counts_bulk(

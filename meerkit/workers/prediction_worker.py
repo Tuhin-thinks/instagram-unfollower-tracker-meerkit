@@ -1,5 +1,5 @@
+import logging
 import threading
-import traceback
 
 from meerkit.config import MAX_PREDICTION_REFRESH_WORKERS
 from meerkit.extensions import prediction_refresh_queue
@@ -8,6 +8,7 @@ from meerkit.services.db_service import close_worker_db, init_worker_db
 
 _worker_lock = threading.Lock()
 _worker_threads: list[threading.Thread] = []
+logger = logging.getLogger(__name__)
 
 
 def start_prediction_worker() -> None:
@@ -48,7 +49,7 @@ def start_prediction_worker() -> None:
                 )
                 prediction_runner.mark_task_completed(task_id)
             except Exception as exc:
-                traceback.print_exc()
+                logger.exception("Prediction worker failed task processing")
                 prediction_runner.mark_task_error(task_id, str(exc))
                 db_service.update_prediction(prediction_id, status="error")
             finally:

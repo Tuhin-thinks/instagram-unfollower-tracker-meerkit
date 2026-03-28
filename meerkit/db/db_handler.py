@@ -1,5 +1,5 @@
+import logging
 import sqlite3
-import traceback
 from pathlib import Path
 
 from meerkit.config import SQLITE_CONNECTION_TIMEOUT
@@ -7,6 +7,7 @@ from meerkit.db import schemas
 
 _AUTOMATION_ACTIONS_HEARTBEAT_COLUMN = "last_heartbeat_at"
 _PREDICTIONS_SESSION_COLUMN = "prediction_session_id"
+logger = logging.getLogger(__name__)
 
 
 class SqliteDBHandler:
@@ -67,10 +68,10 @@ class SqliteDBHandler:
         _is_successful_close = True
         if self.conn:
             if exc_type:
-                print(
-                    f"Exception occurred: {exc_type}, {exc_val}. Rolling back transaction."
+                logger.exception(
+                    "Exception occurred in sqlite transaction. Rolling back transaction.",
+                    exc_info=(exc_type, exc_val, exc_tb),
                 )
-                traceback.print_exception(exc_type, exc_val, exc_tb)
                 # Rollback on error
                 self.conn.rollback()
                 _is_successful_close = False

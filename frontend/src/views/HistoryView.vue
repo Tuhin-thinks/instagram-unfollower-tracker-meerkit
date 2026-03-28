@@ -22,15 +22,23 @@ const { data: history, isLoading } = useQuery({
 const selectedDiff = ref<DiffResult | null>(null)
 const loadingDiffId = ref<string | null>(null)
 const modalExportMessage = ref('')
+const activeModalTab = ref<'new_followers' | 'unfollowers'>('new_followers')
 
 async function viewDiff(diffId: string) {
   loadingDiffId.value = diffId
   try {
     selectedDiff.value = await api.getDiff(diffId)
+    activeModalTab.value = 'new_followers'
     modalExportMessage.value = ''
   } finally {
     loadingDiffId.value = null
   }
+}
+
+function closeDiffModal() {
+  selectedDiff.value = null
+  activeModalTab.value = 'new_followers'
+  modalExportMessage.value = ''
 }
 
 function formatDate(iso: string) {
@@ -177,7 +185,7 @@ async function handleLinkedAccountsSaved() {
       <div
         v-if="selectedDiff"
         class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-        @click.self="selectedDiff = null"
+        @click.self="closeDiffModal"
       >
         <div
           class="bg-[#16213a] border border-white/[0.08] rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto shadow-2xl shadow-black/60"
@@ -191,7 +199,7 @@ async function handleLinkedAccountsSaved() {
             </h3>
             <button
               class="text-slate-500 hover:text-slate-300 w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/[0.07] transition-colors"
-              @click="selectedDiff = null"
+              @click="closeDiffModal"
             >
               ✕
             </button>
@@ -199,23 +207,45 @@ async function handleLinkedAccountsSaved() {
 
           <div class="p-6">
             <!-- Stats row -->
-            <div class="grid grid-cols-2 gap-4 mb-6">
-              <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-center">
+            <div class="grid grid-cols-2 gap-4 mb-6" role="tablist" aria-label="Diff lists">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="activeModalTab === 'new_followers'"
+                :class="[
+                  'rounded-xl p-4 text-center transition-all border',
+                  activeModalTab === 'new_followers'
+                    ? 'bg-emerald-500/15 border-emerald-400/50 ring-2 ring-emerald-400/35'
+                    : 'bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/14 hover:border-emerald-400/35'
+                ]"
+                @click="activeModalTab = 'new_followers'"
+              >
                 <p class="text-3xl font-bold text-emerald-400">
                   +{{ selectedDiff.new_count }}
                 </p>
                 <p class="text-xs text-emerald-400/70 mt-1 font-medium">New Followers</p>
-              </div>
-              <div class="bg-rose-500/10 border border-rose-500/20 rounded-xl p-4 text-center">
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="activeModalTab === 'unfollowers'"
+                :class="[
+                  'rounded-xl p-4 text-center transition-all border',
+                  activeModalTab === 'unfollowers'
+                    ? 'bg-rose-500/15 border-rose-400/50 ring-2 ring-rose-400/35'
+                    : 'bg-rose-500/10 border-rose-500/20 hover:bg-rose-500/14 hover:border-rose-400/35'
+                ]"
+                @click="activeModalTab = 'unfollowers'"
+              >
                 <p class="text-3xl font-bold text-rose-400">
                   −{{ selectedDiff.unfollow_count }}
                 </p>
                 <p class="text-xs text-rose-400/70 mt-1 font-medium">Unfollowers</p>
-              </div>
+              </button>
             </div>
 
             <!-- New followers list -->
-            <template v-if="selectedDiff.new_followers.length">
+            <template v-if="activeModalTab === 'new_followers' && selectedDiff.new_followers.length">
               <h4 class="text-sm font-semibold text-slate-300 mb-3">New Followers</h4>
               <div class="grid gap-2 mb-6">
                 <FollowerCard
@@ -229,7 +259,7 @@ async function handleLinkedAccountsSaved() {
             </template>
 
             <!-- Unfollowers list -->
-            <template v-if="selectedDiff.unfollowers.length">
+            <template v-if="activeModalTab === 'unfollowers' && selectedDiff.unfollowers.length">
               <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h4 class="text-sm font-semibold text-slate-300">Unfollowers</h4>
                 <div class="flex flex-wrap items-center gap-2">
@@ -263,10 +293,17 @@ async function handleLinkedAccountsSaved() {
 
             <!-- Nothing in diff -->
             <p
-              v-if="!selectedDiff.new_followers.length && !selectedDiff.unfollowers.length"
+              v-if="
+                (activeModalTab === 'new_followers' && !selectedDiff.new_followers.length) ||
+                (activeModalTab === 'unfollowers' && !selectedDiff.unfollowers.length)
+              "
               class="text-center text-slate-500 py-6 text-sm"
             >
-              No changes recorded for this scan.
+              {{
+                activeModalTab === 'new_followers'
+                  ? 'No new followers recorded for this scan.'
+                  : 'No unfollowers recorded for this scan.'
+              }}
             </p>
           </div>
         </div>
