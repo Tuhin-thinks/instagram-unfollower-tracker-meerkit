@@ -10,6 +10,12 @@ from urllib.parse import quote, urlparse
 import requests
 import tqdm
 
+from backend.config import (
+    INSTA_ACTION_RETRY_COUNT,
+    INSTA_FOLLOWERS_FETCH_PAGE_SIZE,
+    INSTA_FOLLOWERS_LOOP_DELAY_SECONDS,
+)
+
 url = "https://www.instagram.com/graphql/query"
 _topsearch_url = "https://www.instagram.com/web/search/topsearch/"
 _follow_doc_id = "9740159112729312"
@@ -149,7 +155,7 @@ def resolve_target_user_pk(username: str, profile: InstagramProfile) -> str | No
 def unfollow_user(
     username: str,
     profile: InstagramProfile,
-    retry_count: int = 3,
+    retry_count: int = INSTA_ACTION_RETRY_COUNT,
 ):
     if retry_count < 3:
         print(f"Retrying unfollow for {username}, attempts left: {retry_count}")
@@ -196,7 +202,7 @@ def unfollow_user(
 def follow_user(
     instagram_profile_link: str,
     profile: InstagramProfile,
-    retry_count: int = 3,
+    retry_count: int = INSTA_ACTION_RETRY_COUNT,
 ) -> int:
     """Follow an Instagram user by profile link using GraphQL mutation."""
     if retry_count < 3:
@@ -618,7 +624,7 @@ def get_current_followers(
     username = __user_data["username"]
     print(f"[i] Followers count for {username}: {followers_count}")
     assert isinstance(followers_count, int), "Invalid followers count in user data"
-    _max_fetch_count = 24
+    _max_fetch_count = INSTA_FOLLOWERS_FETCH_PAGE_SIZE
     follower_user_data_list: list[FollowerUserRecord] = []
 
     with requests.Session() as session:
@@ -677,7 +683,7 @@ def get_current_followers(
             followers_count -= _max_fetch_count
             _progress.update(1)
             # delay
-            time.sleep(0.3)
+            time.sleep(INSTA_FOLLOWERS_LOOP_DELAY_SECONDS)
 
     if store_data and _store_fn:
         _store_fn(follower_user_data_list)

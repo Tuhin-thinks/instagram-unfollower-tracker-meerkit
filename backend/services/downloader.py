@@ -2,7 +2,7 @@ from typing import Any, cast
 
 import requests
 
-from backend.config import IMAGE_CACHE_DIR
+from backend.config import IMAGE_CACHE_DIR, IMAGE_DOWNLOAD_REQUEST_TIMEOUT
 from backend.extensions import image_download_queue
 from backend.services import db_service
 from backend.services.instagram_api_usage import instagram_api_usage_tracker
@@ -26,7 +26,9 @@ def process_img_download(
         category="img_download",
         caller_service="downloader",
         caller_method="process_img_download",
-        execute=lambda: requests.get(profile_pic_url, timeout=10),
+        execute=lambda: requests.get(
+            profile_pic_url, timeout=IMAGE_DOWNLOAD_REQUEST_TIMEOUT
+        ),
     )
     response.raise_for_status()
     # store in cache directory with filename as pk_id.jpg

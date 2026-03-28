@@ -5,13 +5,19 @@ from datetime import datetime, timedelta
 from urllib.parse import urlparse
 
 import insta_interface as ii
+from backend.config import (
+    PREDICTION_CACHE_FRESHNESS_HOURS,
+    PREDICTION_TTL_DAYS,
+)
+from backend.config import (
+    PREDICTION_HISTORICAL_REFERENCE_LIMIT as _HISTORICAL_REFERENCE_LIMIT,
+)
 from backend.services import db_service, relationship_cache, user_details_cache
 from backend.services.downloader import enqueue_image_download
 from backend.services.instagram_gateway import instagram_gateway
 
-_PREDICTION_TTL = timedelta(days=7)
-_CACHE_FRESHNESS = timedelta(hours=6)
-_HISTORICAL_REFERENCE_LIMIT = 400
+_PREDICTION_TTL = timedelta(days=PREDICTION_TTL_DAYS)
+_CACHE_FRESHNESS = timedelta(hours=PREDICTION_CACHE_FRESHNESS_HOURS)
 _RELATIONSHIP_TYPES = {"followers", "following"}
 _USER_ID_INPUT_PATTERN = re.compile(r"^\d+$")
 _USERNAME_INPUT_PATTERN = re.compile(r"^[A-Za-z0-9._]+$")

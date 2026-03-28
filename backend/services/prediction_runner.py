@@ -2,12 +2,13 @@ import threading
 from datetime import datetime, timedelta
 from typing import cast
 
+from backend.config import PREDICTION_STALE_TIMEOUT_MINUTES
 from backend.extensions import prediction_refresh_queue
 from backend.services import db_service
 
 _state_lock = threading.Lock()
 _states: dict[str, dict] = {}
-_STALE_RUNNING_TIMEOUT = timedelta(minutes=5)
+_STALE_RUNNING_TIMEOUT = timedelta(minutes=PREDICTION_STALE_TIMEOUT_MINUTES)
 
 
 def _set_state(task_id: str, payload: dict) -> None:
@@ -59,10 +60,11 @@ def fail_stale_task(task: dict | None) -> dict | None:
     if task is None:
         return None
 
+    _timeout_minutes = int(_STALE_RUNNING_TIMEOUT.total_seconds() // 60)
     stale_error = (
-        "Prediction task stayed queued for more than 5 minutes."
+        f"Prediction task stayed queued for more than {_timeout_minutes} minutes."
         if task.get("status") == "queued"
-        else "Prediction task became inactive after running for more than 5 minutes."
+        else f"Prediction task became inactive after running for more than {_timeout_minutes} minutes."
     )
     stale_task = mark_task_error(task["task_id"], stale_error)
     db_service.update_prediction(task["prediction_id"], status="error")

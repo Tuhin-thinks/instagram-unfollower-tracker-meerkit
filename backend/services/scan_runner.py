@@ -4,12 +4,14 @@ from datetime import datetime
 from pathlib import Path
 
 from backend import scan_worker
+from backend.config import (
+    SCAN_STALE_STARTUP_GRACE_SECONDS as _STALE_STARTUP_GRACE_SECONDS,
+)
 from backend.services import persistence
 
 _locks: dict[str, threading.Lock] = {}
 _states: dict[str, dict] = {}
 _threads: dict[str, threading.Thread] = {}
-_STALE_STARTUP_GRACE_SECONDS = 5
 
 
 def _scope_key(app_user_id: str, profile_id: str) -> str:

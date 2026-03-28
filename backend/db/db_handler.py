@@ -2,6 +2,7 @@ import sqlite3
 import traceback
 from pathlib import Path
 
+from backend.config import SQLITE_CONNECTION_TIMEOUT
 from backend.db import schemas
 
 _AUTOMATION_ACTIONS_HEARTBEAT_COLUMN = "last_heartbeat_at"
@@ -41,7 +42,7 @@ class SqliteDBHandler:
         if self.conn is None:
             self.conn = sqlite3.connect(
                 self.db_path,
-                timeout=10.0,  # Wait up to 10 seconds if database is locked
+                timeout=SQLITE_CONNECTION_TIMEOUT,
             )
             self.conn.row_factory = sqlite3.Row
         return self.conn

@@ -13,6 +13,12 @@ from datetime import datetime
 from uuid import uuid4
 
 import insta_interface as ii
+from backend.config import (
+    AUTOMATION_INTER_ACTION_DELAY_SECONDS as _INTER_ACTION_DELAY_SECONDS,
+)
+from backend.config import (
+    AUTOMATION_INTER_ACTION_JITTER_SECONDS as _INTER_ACTION_JITTER_SECONDS,
+)
 from backend.extensions import automation_action_queue
 from backend.services import db_service
 from backend.services.account_handler import (
@@ -24,12 +30,6 @@ from backend.services.instagram_gateway import instagram_gateway
 _USER_ID_RE = _re.compile(r"^\d+$")
 _USERNAME_RE = _re.compile(r"^[A-Za-z0-9._]+$")
 _THREAD_LOCAL = threading.local()
-
-
-# Delay between individual follow/unfollow actions (seconds).
-_INTER_ACTION_DELAY_SECONDS = 3.0
-# Extra jitter ceiling on top of the base delay (seconds).
-_INTER_ACTION_JITTER_SECONDS = 4.0
 
 
 def _now_iso() -> str:

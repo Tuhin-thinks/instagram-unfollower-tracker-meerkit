@@ -3,12 +3,11 @@ from typing import cast
 
 from flask import Blueprint, jsonify, request
 
+from backend.config import TASKS_CANCELLED_EXPIRY_SECONDS, TASKS_MAX_RECENT_COUNT
 from backend.routes import get_active_context
 from backend.services import automation_runner, prediction_runner, scan_runner
 
 bp = Blueprint("tasks", __name__, url_prefix="/api")
-_MAX_TASKS = 10
-_CANCELLED_EXPIRY_SECONDS = 300  # 5 minutes
 
 
 def _keep_task(task: dict) -> bool:
@@ -20,7 +19,7 @@ def _keep_task(task: dict) -> bool:
         return True
     try:
         age = (datetime.now() - datetime.fromisoformat(completed_at)).total_seconds()
-        return age < _CANCELLED_EXPIRY_SECONDS
+        return age < TASKS_CANCELLED_EXPIRY_SECONDS
     except ValueError:
         return True
 
@@ -114,10 +113,10 @@ def list_tasks():
 
     # Always include all active tasks, then fill with recent non-running tasks.
     if running_tasks:
-        max_non_running = max(_MAX_TASKS - len(running_tasks), 0)
+        max_non_running = max(TASKS_MAX_RECENT_COUNT - len(running_tasks), 0)
         tasks = [*running_tasks, *non_running_tasks[:max_non_running]]
     else:
-        tasks = non_running_tasks[:_MAX_TASKS]
+        tasks = non_running_tasks[:TASKS_MAX_RECENT_COUNT]
 
     running_count = sum(
         1 for item in tasks if item.get("status") in {"queued", "running"}
