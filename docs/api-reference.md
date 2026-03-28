@@ -1,700 +1,399 @@
 # API Reference
 
-Complete REST API endpoint documentation with request/response examples.
+This document lists the currently implemented HTTP API in the Flask backend.
 
 ## Base URL
 
-```
-http://localhost:5000/api (development)
-https://meerkit.your-domain.com/api (production)
-```
+- Development: `http://localhost:5000/api`
+- Production: `https://<your-domain>/api`
 
-## Authentication
+## Auth Model
 
-All endpoints except `/auth/register` and `/auth/login` require a valid session (automatically managed via Flask sessions).
+- Cookie-based Flask session auth is used.
+- Public endpoints: `POST /auth/register`, `POST /auth/login`
+- All other endpoints require a logged-in app user.
+- Most data endpoints are scoped by active Instagram account and accept either:
+  - `profile_id=<instagram_user_id>`
+  - `instagram_user_id=<instagram_user_id>`
 
-**Session Management:**
+## Error Format
 
-- Sessions are stored in browser cookies
-- Session data is validated on each request
-- Logout clears session
-
-## Error Responses
-
-All errors return JSON with status code:
+All API errors return JSON:
 
 ```json
 {
-    "error": "Description of what went wrong"
+  "error": "Description"
 }
 ```
 
-**Common Status Codes:**
+Common status codes: `200`, `201`, `202`, `400`, `401`, `404`, `409`, `502`.
 
-- `200 OK` – Success
-- `201 Created` – Resource created
-- `202 Accepted` – Async operation started
-- `400 Bad Request` – Invalid input
-- `401 Unauthorized` – Not authenticated
-- `404 Not Found` – Resource not found
-- `409 Conflict` – State conflict (e.g., scan already running)
-- `500 Internal Server Error` – Server error
+## Auth Endpoints (`/api/auth`)
 
----
+### POST `/auth/register`
+Create app user.
 
-## Authentication Endpoints
-
-### POST /auth/register
-
-Register a new app user account.
-
-**Request:**
+Request:
 
 ```json
 {
-    "name": "username",
-    "password": "password123"
+  "name": "alice",
+  "password": "secret"
 }
 ```
 
-**Response (201 Created):**
+Response `201`:
 
 ```json
 {
-    "app_user_id": "user_abc123",
-    "name": "username",
-    "instagram_users": [],
-    "active_instagram_user": null
+  "app_user_id": "app_...",
+  "name": "alice"
 }
 ```
 
-**Errors:**
+### POST `/auth/login`
+Log in app user and return profile context.
 
-- `400` – Missing name/password or user already exists
-
----
-
-### POST /auth/login
-
-Authenticate user and create session.
-
-**Request:**
+Response `200`:
 
 ```json
 {
-    "name": "username",
-    "password": "password123"
-}
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "app_user_id": "user_abc123",
-  "name": "username",
-  "instagram_users": [{
-    "instagram_user_id": "ig_001",
-    "name": "My Instagram",
-    "username": "@myusername",
-    "user_id": "12345",
-    ...
-  }],
+  "app_user_id": "app_...",
+  "name": "alice",
+  "instagram_users": [
+    {
+      "instagram_user_id": "123456",
+      "name": "Primary IG",
+      "username": "alice_ig",
+      "created_at": "2026-03-20T10:30:00",
+      "credentials_old": false,
+      "credentials_age_hours": 4
+    }
+  ],
   "active_instagram_user": {
-    "instagram_user_id": "ig_001",
-    ...
+    "instagram_user_id": "123456",
+    "name": "Primary IG",
+    "username": "alice_ig",
+    "created_at": "2026-03-20T10:30:00",
+    "credentials_old": false,
+    "credentials_age_hours": 4
   }
 }
 ```
 
-**Errors:**
+Note: credential fields (`session_id`, `csrf_token`, `password_hash`) are never returned.
 
-- `401` – Invalid credentials
-
----
-
-### POST /auth/logout
-
+### POST `/auth/logout`
 Clear session.
 
-**Request:**
-
-```bash
-curl -X POST http://localhost:5000/api/auth/logout
-```
-
-**Response (200 OK):**
+Response `200`:
 
 ```json
 {
-    "ok": true
+  "ok": true
 }
 ```
 
----
+### GET `/auth/me`
+Get current app-user context.
 
-### GET /auth/me
-
-Get current user context.
-
-**Request:**
-
-```bash
-curl http://localhost:5000/api/auth/me
-```
-
-**Response (200 OK - Logged In):**
-
-```json
-{
-  "app_user_id": "user_abc123",
-  "name": "username",
-  "instagram_users": [...],
-  "active_instagram_user": {...}
-}
-```
-
-**Response (200 OK - Not Logged In):**
+Response `200` (not logged in):
 
 ```json
 null
 ```
 
----
+### GET `/auth/instagram-api-usage`
+Get grouped API/caching usage summary.
 
-## Instagram User Endpoints
+Optional query:
 
-### GET /auth/instagram-users
+- `instagram_user_id`
 
-List all Instagram accounts for current app user.
+### GET `/auth/instagram-users`
+List Instagram accounts for current app user (sanitized payload).
 
-**Request:**
+### POST `/auth/instagram-users`
+Create Instagram account for current app user.
 
-```bash
-curl http://localhost:5000/api/auth/instagram-users
-```
-
-**Response (200 OK):**
-
-```json
-[
-    {
-        "instagram_user_id": "ig_001",
-        "name": "My Instagram",
-        "username": "@myusername",
-        "user_id": "12345",
-        "csrf_token": "...",
-        "session_id": "...",
-        "created_at": "2026-03-18T10:00:00",
-        "csrf_token_added_at": "2026-03-18T10:00:00",
-        "session_id_added_at": "2026-03-18T10:00:00"
-    }
-]
-```
-
----
-
-### POST /auth/instagram-users
-
-Add a new Instagram account.
-
-**Request:**
+Request:
 
 ```json
 {
-    "name": "Display Name",
-    "csrf_token": "...",
-    "session_id": "...",
-    "user_id": "12345"
+  "name": "Primary IG",
+  "csrf_token": "...",
+  "session_id": "...",
+  "user_id": "123456"
 }
 ```
 
-**Response (201 Created):**
+Response `201`:
 
 ```json
 {
   "instagram_user": {
-    "instagram_user_id": "ig_NEW",
-    ...
+    "instagram_user_id": "123456",
+    "name": "Primary IG",
+    "username": "alice_ig",
+    "created_at": "2026-03-20T10:30:00",
+    "credentials_old": false,
+    "credentials_age_hours": 0
   },
   "me": {
-    "app_user_id": "user_abc123",
-    ...
+    "app_user_id": "app_...",
+    "name": "alice",
+    "instagram_users": [],
+    "active_instagram_user": null
   }
 }
 ```
 
-**Errors:**
+### GET `/auth/instagram-users/<instagram_user_id>`
+Get one Instagram account (sanitized payload).
 
-- `401` – Not logged in
-- `400` – Missing or invalid fields
+### PATCH `/auth/instagram-users/<instagram_user_id>`
+Update account display name and/or credentials via cookie string.
 
----
+Request:
 
-### GET /auth/instagram-users/{instagram_user_id}
+```json
+{
+  "display_name": "Updated Name",
+  "cookie_string": "sessionid=...; ds_user_id=...; csrftoken=..."
+}
+```
 
-Get details for one Instagram account.
+### POST `/auth/instagram-users/<instagram_user_id>/select`
+Set active Instagram account.
 
-**Request:**
+### DELETE `/auth/instagram-users/<instagram_user_id>`
+Delete one Instagram account and associated data scope.
+
+### DELETE `/auth/instagram-users`
+Delete all Instagram accounts for current app user.
+
+## Scan & History Endpoints (`/api`)
+
+### POST `/scan`
+Start async follower scan.
+
+### GET `/scan/status`
+Get scan status (`idle | running | cancelled | error`) and last scan metadata.
+
+### POST `/scan/cancel`
+Mark running scan as cancelled.
+
+### GET `/summary`
+Get latest scan summary (or `null` if no scan yet).
+
+### GET `/history`
+Get scan history.
+
+Query options:
+
+- `range=recent|all_time`
+- `days`
+- `limit`
+- `offset`
+
+### GET `/scan-analytics`
+Get day-bucketed analytics for recent scan deltas.
+
+Query options:
+
+- `days` (default `30`)
+
+### GET `/diff/latest`
+Get latest computed diff.
+
+### GET `/diff/<diff_id>`
+Get a specific diff by ID.
+
+## Image Endpoint (`/api`)
+
+### GET `/image/<pk_id>`
+Serve cached profile image or queue download and return placeholder.
+
+- `pk_id` must be numeric.
+- Returns image bytes (`image/jpeg`) when successful.
+
+## Prediction Endpoints (`/api`)
+
+### POST `/predictions/follow-back`
+Create or refresh a follow-back prediction.
+
+Request fields:
+
+- `username` or `user_id`
+- `refresh` (optional)
+- `force_background` (optional)
+- `relationship_type` (`followers|following`, optional)
+- `prediction_session_id` (optional)
+
+Returns `200` for immediate result or `202` when background task is queued.
+
+### GET `/targets/<target_profile_id>/relationship-cache`
+Get relationship cache status for a target.
+
+Optional query:
+
+- `sync_counts=true|false`
+
+### POST `/targets/<target_profile_id>/relationship-cache/refresh`
+Refresh one relationship cache (`followers` or `following`) in background.
+
+### GET `/predictions/history`
+List prediction sessions/history.
+
+Query options:
+
+- `target_profile_id`
+- `limit` (max `200`)
+- `offset`
+
+### GET `/predictions/history/sessions/<prediction_session_id>`
+List predictions in one session.
+
+### GET `/predictions/<prediction_id>`
+Get prediction record, linked task status, and assessments.
+
+### PATCH `/predictions/<prediction_id>/feedback`
+Store feedback/assessment.
+
+Request fields include:
+
+- `assessment_status`: `correct|wrong|pending_review|ignored`
+- `notes`
+- `observed_at`
+- `expected_direction`: `higher|lower`
+- `expected_value`: `0.0..1.0`
+
+### GET `/prediction-tasks/<task_id>/status`
+Get one prediction task status.
+
+### GET `/prediction-tasks/latest`
+Get latest prediction task for current scope.
+
+Optional query:
+
+- `target_profile_id`
+
+### POST `/prediction-tasks/<task_id>/cancel`
+Cancel queued/running prediction task.
+
+## Tasks Endpoint (`/api`)
+
+### GET `/tasks`
+Unified live task list combining:
+
+- prediction tasks
+- scan tasks
+- automation actions
+
+Cancelled tasks are retained briefly for UI visibility.
+
+## Automation Endpoints (`/api/automation`)
+
+### GET `/automation/cache-efficiency`
+Get read-cache hit/call efficiency summary per category.
+
+### GET `/automation/cache-size`
+Get cache scope disk stats.
+
+### GET `/automation/following-users`
+Get current following list enriched with follows-you and count metadata.
+
+### POST `/automation/batch-follow/prepare`
+Stage intelligent batch-follow action.
+
+### POST `/automation/batch-unfollow/prepare`
+Stage batch-unfollow action.
+
+### POST `/automation/left-right-compare/prepare`
+Stage left-right comparison action.
+
+### POST `/automation/actions/<action_id>/confirm`
+Queue staged automation action for execution.
+
+### POST `/automation/actions/<action_id>/cancel`
+Cancel automation action.
+
+### GET `/automation/actions/<action_id>`
+Get action details with `items_by_status`.
+
+### GET `/automation/actions`
+List actions for current scope.
+
+Query options:
+
+- `action_type`
+- `limit` (max `500`)
+
+### GET `/automation/safelists/<list_type>`
+Get safelist entries.
+
+`list_type` values:
+
+- `do_not_follow`
+- `never_unfollow`
+
+### POST `/automation/safelists/<list_type>`
+Add entries to safelist.
+
+Request:
+
+```json
+{
+  "entries": ["@user1", "https://instagram.com/user2"]
+}
+```
+
+### DELETE `/automation/safelists/<list_type>/<identity_key>`
+Delete one safelist entry.
+
+### GET `/automation/alternative-account-links`
+List alternative-account links.
+
+Optional query:
+
+- `primary_identity_key`
+
+### POST `/automation/alternative-account-links`
+Add primary-to-alternative account links.
+
+Request:
+
+```json
+{
+  "primary_account": "@primary",
+  "alternative_accounts": ["@alt1", "@alt2"],
+  "linkedin_accounts": ["https://linkedin.com/in/..."],
+  "trigger_discovery": true
+}
+```
+
+### DELETE `/automation/alternative-account-links/<primary_identity_key>/<alt_identity_key>`
+Delete one alternative-account link.
+
+## Minimal Example Flow
 
 ```bash
-curl http://localhost:5000/api/auth/instagram-users/ig_001
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "instagram_user_id": "ig_001",
-  "name": "My Instagram",
-  ...
-}
-```
-
-**Errors:**
-
-- `401` – Not logged in
-- `404` – Account not found
-
----
-
-### PATCH /auth/instagram-users/{instagram_user_id}
-
-Update Instagram account (display name and/or credentials).
-
-**Request:**
-
-```json
-{
-    "display_name": "New Name",
-    "cookie_string": "sessionid=...; csrftoken=..."
-}
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "instagram_user": {...},
-  "me": {...},
-  "message": "Instagram account updated"
-}
-```
-
----
-
-### POST /auth/instagram-users/{instagram_user_id}/select
-
-Set active Instagram account for subsequent scans.
-
-**Request:**
-
-```bash
-curl -X POST http://localhost:5000/api/auth/instagram-users/ig_001/select
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "active_instagram_user": {...},
-  "message": "Active account set to My Instagram",
-  "me": {...}
-}
-```
-
----
-
-### DELETE /auth/instagram-users/{instagram_user_id}
-
-Delete one Instagram account.
-
-**Request:**
-
-```bash
-curl -X DELETE http://localhost:5000/api/auth/instagram-users/ig_001
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "ok": true,
-  "me": {...}
-}
-```
-
----
-
-### DELETE /auth/instagram-users
-
-Delete all Instagram accounts.
-
-**Request:**
-
-```bash
-curl -X DELETE http://localhost:5000/api/auth/instagram-users
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "ok": true,
-  "me": {...}
-}
-```
-
----
-
-## Scan Endpoints
-
-### POST /scan
-
-Start a new follower scan.
-
-**Query Parameters:**
-
-- `profile_id` (required) – Instagram user ID to scan
-
-**Request:**
-
-```bash
-curl -X POST http://localhost:5000/api/scan?profile_id=12345
-```
-
-**Response (202 Accepted - Started):**
-
-```json
-{
-    "message": "scan started"
-}
-```
-
-**Response (409 Conflict - Already Running):**
-
-```json
-{
-    "error": "Scan already in progress"
-}
-```
-
----
-
-### GET /scan/status
-
-Get scan status and metadata.
-
-**Query Parameters:**
-
-- `profile_id` (required) – Instagram user ID
-
-**Request:**
-
-```bash
-curl http://localhost:5000/api/scan/status?profile_id=12345
-```
-
-**Response (Running):**
-
-```json
-{
-    "status": "running",
-    "started_at": "2026-03-18T10:30:00",
-    "last_scan_id": "scan_abc123",
-    "last_scan_at": "2026-03-18T10:29:00",
-    "error": null
-}
-```
-
-**Response (Idle):**
-
-```json
-{
-    "status": "idle",
-    "started_at": null,
-    "last_scan_id": "scan_abc123",
-    "last_scan_at": "2026-03-18T10:29:00",
-    "error": null
-}
-```
-
-**Response (Error):**
-
-```json
-{
-    "status": "error",
-    "started_at": "2026-03-18T10:30:00",
-    "last_scan_id": null,
-    "last_scan_at": null,
-    "error": "Instagram API returned 429: Rate limit exceeded"
-}
-```
-
-**Polling Strategy:**
-
-```javascript
-// Poll every 2s while running, stop when idle/error
-const pollStatus = async () => {
-    const response = await fetch("/api/scan/status?profile_id=12345");
-    const status = await response.json();
-
-    if (status.status === "running") {
-        setTimeout(pollStatus, 2000); // Poll again in 2s
-    }
-};
-```
-
----
-
-## Diff & Summary Endpoints
-
-### GET /summary
-
-Get latest scan summary with follower count and diff totals.
-
-**Query Parameters:**
-
-- `profile_id` (required) – Instagram user ID
-
-**Request:**
-
-```bash
-curl http://localhost:5000/api/summary?profile_id=12345
-```
-
-**Response (200 OK):**
-
-```json
-{
-    "scan_id": "scan_abc123",
-    "timestamp": "2026-03-18T10:29:00",
-    "follower_count": 5432,
-    "diff_id": "diff_xyz789",
-    "new_count": 42,
-    "unfollow_count": 8
-}
-```
-
-**Response (200 OK - No Scan Yet):**
-
-```json
-null
-```
-
----
-
-### GET /diff/latest
-
-Get latest diff (new followers + unfollowers).
-
-**Query Parameters:**
-
-- `profile_id` (required) – Instagram user ID
-
-**Request:**
-
-```bash
-curl http://localhost:5000/api/diff/latest?profile_id=12345
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "diff_id": "diff_xyz789",
-  "scan_id": "scan_abc123",
-  "timestamp": "2026-03-18T10:29:00",
-  "new_followers": [
-    {
-      "pk_id": "user_1",
-      "username": "newuser1",
-      "full_name": "New User",
-      "profile_pic_url": "https://...",
-      "is_verified": false,
-      "is_private": false
-    }
-  ],
-  "unfollowers": [
-    {
-      "pk_id": "user_2",
-      "username": "leftuser",
-      "full_name": "Left User",
-      ...
-    }
-  ],
-  "new_count": 1,
-  "unfollow_count": 1
-}
-```
-
----
-
-### GET /diff/{diff_id}
-
-Get specific diff by ID.
-
-**Request:**
-
-```bash
-curl http://localhost:5000/api/diff/diff_xyz789?profile_id=12345
-```
-
-**Response (200 OK):**
-
-```json
-{
-  "diff_id": "diff_xyz789",
-  ...
-}
-```
-
-**Errors:**
-
-- `404` – Diff not found
-
----
-
-### GET /history
-
-Get full scan history.
-
-**Query Parameters:**
-
-- `profile_id` (required) – Instagram user ID
-
-**Request:**
-
-```bash
-curl http://localhost:5000/api/history?profile_id=12345
-```
-
-**Response (200 OK):**
-
-```json
-[
-    {
-        "scan_id": "scan_abc123",
-        "diff_id": "diff_xyz789",
-        "timestamp": "2026-03-18T10:29:00",
-        "follower_count": 42,
-        "unfollower_count": 8
-    },
-    {
-        "scan_id": "scan_abc122",
-        "diff_id": "diff_xyz788",
-        "timestamp": "2026-03-18T09:15:00",
-        "follower_count": 35,
-        "unfollower_count": 2
-    }
-]
-```
-
----
-
-## Image Endpoints
-
-### GET /image/{pk_id}
-
-Get cached profile picture for a follower.
-
-**Path Parameters:**
-
-- `pk_id` (required) – Follower's Instagram user ID
-
-**Request:**
-
-```bash
-curl http://localhost:5000/api/image/user_12345 \
-  -H "Range: bytes=0-1048575" \
-  --output profile.jpg
-```
-
-**Response (200 OK):**
-
-- Returns image file (PNG/JPG)
-- Cache-Control: 7 days
-- Content-Type: image/jpeg or image/png
-
-**Response (404 Not Found):**
-
-```
-Image not cached yet
-```
-
-**Example HTML:**
-
-```html
-<img src="/api/image/user_12345" alt="Profile" />
-```
-
----
-
-## Rate Limiting
-
-Currently no rate limiting implemented, but planned for production:
-
-```
-X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 59
-X-RateLimit-Reset: 1234567890
-```
-
----
-
-## Headers
-
-**Request Headers:**
-
-```
-Content-Type: application/json
-Accept: application/json
-```
-
-**Response Headers:**
-
-```
-Content-Type: application/json
-Cache-Control: max-age=300 (for images)
-ETag: "abc123" (for caching)
-```
-
----
-
-## Examples
-
-### Complete Scan Flow
-
-```bash
-# 1. Login
+# 1) login
 curl -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"name": "user1", "password": "pass"}'
+  -d '{"name":"alice","password":"secret"}'
 
-# 2. Add Instagram account
-curl -X POST http://localhost:5000/api/auth/instagram-users \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "My IG",
-    "csrf_token": "...",
-    "session_id": "...",
-    "user_id": "12345"
-  }'
+# 2) select active IG account
+curl -X POST http://localhost:5000/api/auth/instagram-users/123456/select
 
-# 3. Select active account
-curl -X POST http://localhost:5000/api/auth/instagram-users/ig_001/select
+# 3) start scan
+curl -X POST "http://localhost:5000/api/scan?profile_id=123456"
 
-# 4. Start scan
-curl -X POST http://localhost:5000/api/scan?profile_id=12345
+# 4) poll status
+curl "http://localhost:5000/api/scan/status?profile_id=123456"
 
-# 5. Poll status (every 2 seconds)
-curl http://localhost:5000/api/scan/status?profile_id=12345
-
-# 6. Get results
-curl http://localhost:5000/api/summary?profile_id=12345
-curl http://localhost:5000/api/diff/latest?profile_id=12345
+# 5) read latest diff
+curl "http://localhost:5000/api/diff/latest?profile_id=123456"
 ```
 
----
-
-Next: [Backend Architecture](backend.md) or [Contributing](contributing.md)
+Next: [Backend API](backend.md), [Architecture](architecture.md)

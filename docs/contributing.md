@@ -26,13 +26,13 @@ All Python code must pass:
 
 ```bash
 # Format with Black
-black backend/
+black meerkit/
 
 # Type check with mypy
-mypy backend/
+mypy meerkit/
 
 # Lint with ruff
-ruff check backend/ --fix
+ruff check meerkit/ --fix
 ```
 
 **Guidelines:**

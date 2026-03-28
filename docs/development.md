@@ -78,17 +78,17 @@ uv run watchmedo auto-restart -d meerkit -p '*.py' -- \
 
 ```bash
 # Format code
-black backend/
+black meerkit/
 
 # Check types
-mypy backend/
+mypy meerkit/
 
 # Lint
-ruff check backend/
-ruff check --fix backend/  # Auto-fix issues
+ruff check meerkit/
+ruff check --fix meerkit/  # Auto-fix issues
 
 # All at once
-black backend/ && mypy backend/ && ruff check backend/
+black meerkit/ && mypy meerkit/ && ruff check meerkit/
 ```
 
 ### Frontend (TypeScript/Vue)
@@ -255,10 +255,10 @@ tail -f logs.txt
 
 ### Adding a Backend Route
 
-1. Create endpoint in `backend/routes/`:
+1. Create endpoint in `meerkit/routes/`:
 
 ```python
-# backend/routes/new_feature.py
+# meerkit/routes/new_feature.py
 from flask import Blueprint, jsonify
 
 bp = Blueprint("new_feature", __name__, url_prefix="/api")
@@ -269,7 +269,7 @@ def my_endpoint():
     return jsonify({"data": "value"})
 ```
 
-2. Register in `backend/app.py`:
+2. Register in `meerkit/app.py`:
 
 ```python
 from meerkit.routes.new_feature import bp as new_feature_bp
@@ -344,7 +344,7 @@ const { data, isLoading } = useQuery({
 git checkout -b feature/amazing-feature
 
 # Commit changes
-git add backend/routes/new.py
+git add meerkit/routes/new.py
 git commit -m "feat: add new endpoint /api/feature"
 
 # Push to branch

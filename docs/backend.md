@@ -1,401 +1,143 @@
 # Backend API
 
-Comprehensive guide to the Flask backend architecture, services, and API design.
+This page describes the current Flask backend architecture under the `meerkit` package.
 
-## Backend Overview
+## Runtime Overview
 
-## Admin Interface
+- App factory: `meerkit/app.py`
+- Framework: Flask + Flask-CORS
+- Storage: per-user SQLite files via `meerkit/services/db_service.py`
+- Async workers:
+  - `meerkit/workers/download_worker.py`
+  - `meerkit/workers/prediction_worker.py`
+  - `meerkit/workers/automation_worker.py`
+- Scan execution entry: `meerkit/scan_worker.py`
 
-![Admin Interface](images/meerkit-admin-window.png)
+## Package Layout
 
-## API Architecture
-The backend is a Flask application organized into layers:
-
-1. **Routes** – HTTP endpoint handlers
-2. **Services** – Business logic (auth, scanning, persistence)
-3. **Database** – SQLite operations and schema
-4. **Workers** – Background tasks (scanning, downloading)
-
-## Project Structure
-
-```
-backend/
-├── app.py                 # Flask app factory
-├── config.py              # Configuration
-├── extensions.py          # Extensions (DB)
-│
+```text
+meerkit/
+├── app.py
+├── config.py
+├── extensions.py
+├── scan_worker.py
 ├── routes/
-│   ├── auth.py           # Authentication endpoints
-│   ├── scan.py           # Scan operations
-│   ├── history.py        # History and diffs
-│   ├── images.py         # Image serving
-│   └── __init__.py
-│
+│   ├── auth.py
+│   ├── scan.py
+│   ├── history.py
+│   ├── images.py
+│   ├── predict.py
+│   ├── tasks.py
+│   └── automation.py
 ├── services/
-│   ├── db_service.py     # Database operations
-│   ├── scan_runner.py    # Scan orchestration
-│   ├── auth_service.py   # User authentication
-│   ├── persistence.py    # Data persistence
-│   ├── image_cache.py    # Image caching
-│   └── ...
-│
+│   ├── auth_service.py
+│   ├── scan_runner.py
+│   ├── prediction_runner.py
+│   ├── automation_runner.py
+│   ├── automation_service.py
+│   ├── instagram_gateway.py
+│   ├── instagram_response_cache.py
+│   ├── instagram_api_usage.py
+│   ├── relationship_cache.py
+│   ├── user_details_cache.py
+│   ├── persistence.py
+│   └── db_service.py
 ├── db/
-│   ├── db_handler.py     # SQLite wrapper
-│   ├── schemas.py        # Table definitions
-│   └── __init__.py
-│
+│   ├── db_handler.py
+│   └── schemas.py
 └── workers/
-    ├── download_worker.py    # Image downloads
-    ├── scan_worker.py        # Scan execution
-    └── __init__.py
+    ├── download_worker.py
+    ├── prediction_worker.py
+    └── automation_worker.py
 ```
 
-## Key Modules
+## Route Groups
 
-### app.py
+All routes are registered in `meerkit/app.py`.
 
-Flask application factory. Initializes the app, configures CORS, and registers blueprints.
+### Auth (`/api/auth`)
 
-```python
-def create_app() -> Flask:
-    app = Flask(__name__)
-    CORS(app, resources={...})
+- app user register/login/logout/me
+- Instagram account CRUD/select
+- Instagram API usage summary
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(scan_bp)
-    # ...
+### Scan + History (`/api`)
 
-    return app
-```
+- trigger scan, poll status, cancel scan
+- summary, history, analytics
+- latest diff and diff by ID
 
-**Key Features:**
+### Predictions (`/api`)
 
-- CORS enabled for dev servers (5173, 4173)
-- Blueprint registration for modular routes
-- Debug reload handling with `WERKZEUG_RUN_MAIN` check
+- follow-back prediction create/refresh
+- relationship cache status + refresh
+- prediction history + session history
+- prediction details + feedback
+- prediction task status/latest/cancel
 
-### config.py
+### Tasks (`/api`)
 
-Configuration management for paths and settings.
+- unified active task feed for scan/prediction/automation
 
-```python
-DATA_DIR = Path(__file__).parent.parent / "data"
-DIFFS_DIR = DATA_DIR / "diffs"
-SCANS_DIR = DATA_DIR / "scans"
+### Automation (`/api/automation`)
 
-def app_user_db() -> Path:
-    return DATA_DIR / "app.db"
-```
+- cache efficiency + cache size
+- following-user discovery
+- batch follow/unfollow/left-right-compare prepare flows
+- action confirm/cancel/status/list
+- safelists (`do_not_follow`, `never_unfollow`)
+- alternative-account link registry
 
-### Routes
+### Images (`/api`)
 
-#### Auth Routes (`/api/auth`)
+- profile image serve/cache queue endpoint
 
-```
-POST   /auth/register          Register new app user
-POST   /auth/login             Log in app user
-POST   /auth/logout            Clear session
-GET    /auth/me                Get current user context
-POST   /auth/instagram-users   Add Instagram account
-GET    /auth/instagram-users   List Instagram accounts
-GET    /auth/instagram-users/{id}    Get account details
-PATCH  /auth/instagram-users/{id}    Update account
-POST   /auth/instagram-users/{id}/select    Set active account
-DELETE /auth/instagram-users/{id}    Delete account
-```
+## Worker Model
 
-**Example Request/Response:**
+- Scan runs in a background thread via `scan_runner.start_scan()`.
+- Prediction refresh tasks are queued and consumed by prediction workers.
+- Automation actions are durable in DB and resumed/recovered by automation workers.
+- Image downloads are queued and processed by download workers.
+
+## Session + Scope Model
+
+- Browser session stores `app_user_id` and `active_instagram_user_id`.
+- Route helper `get_active_context()` resolves app-user + Instagram-user scope.
+- Most scoped routes accept query override via `profile_id` or `instagram_user_id`.
+
+## Caching + Metrics
+
+- Gateway response cache for Instagram read operations:
+  - user lookup
+  - user data fetch
+  - followers/following discovery
+- Cache hit/call metrics are stored as `instagram_api_usage_events`.
+- Automation endpoints expose efficiency and size summaries.
+
+## Error Handling Conventions
+
+- Auth/context failures: `401` or `400`
+- Missing resource: `404`
+- In-progress conflict: `409`
+- Validation errors: `400`
+- Upstream/Instagram fetch failures in automation list fetch: `502`
+
+## Local Run
 
 ```bash
-curl -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"name": "user1", "password": "secret"}'
+uv run flask --app meerkit.app run --debug --port 5000
 ```
 
-```json
-{
-  "app_user_id": "user_abc123",
-  "name": "user1",
-  "instagram_users": [...],
-  "active_instagram_user": {...}
-}
-```
-
-#### Scan Routes (`/api`)
-
-```
-POST   /scan                   Start a scan
-GET    /scan/status            Get scan status
-GET    /summary                Get latest scan summary
-POST   /scan/<profile_id>      Start scan for specific profile
-```
-
-**Example:**
-
-```bash
-# Start scan
-curl -X POST http://localhost:5000/api/scan?profile_id=12345
-
-# Poll status
-curl http://localhost:5000/api/scan/status?profile_id=12345
-```
-
-#### History & Diff Routes (`/api`)
-
-```
-GET    /history                Get full scan history
-GET    /diff/latest            Get latest diff
-GET    /diff/<diff_id>         Get specific diff
-```
-
-#### Image Routes (`/api`)
-
-```
-GET    /image/<pk_id>          Get cached profile picture
-```
-
-### Services
-
-#### db_service.py
-
-Thread-safe database operations with thread-local connections.
-
-**Key Functions:**
-
-```python
-def get_worker_db(db_path: Path | None = None) -> SqliteDBHandler:
-    """Get or create thread-local DB connection."""
-
-def store_scan_info(scan_id, reference_profile_id, app_user_id, profile_list):
-    """Store scan metadata and follower records."""
-
-def generate_scan_diff(latest_scan_id, reference_profile_id, app_user_id):
-    """Compute and store diff between scans."""
-
-def cache_image_path(to_insert_data: list[tuple[str, str, str]]):
-    """Cache profile image paths."""
-```
-
-**Thread Safety:**
-
-```python
-_thread_local = threading.local()
-
-def get_worker_db():
-    existing = getattr(_thread_local, "db", None)
-    if existing and existing.db_path == db_path:
-        return existing
-    _thread_local.db = SqliteDBHandler(db_path=db_path)
-    return _thread_local.db
-```
-
-#### scan_runner.py
-
-Orchestrates scan execution and manages scan state.
-
-```python
-def start_scan(app_user_id, profile_id, data_dir, credentials, target_user_id) -> bool:
-    """Start background scan; returns False if already running."""
-    # Acquires lock, updates state, starts worker thread
-
-def get_status(app_user_id, profile_id) -> dict:
-    """Get scan status (idle | running | error)."""
-```
-
-#### auth_service.py
-
-User registration, login, and credential management.
-
-```python
-def register_app_user(name: str, password: str) -> dict:
-    """Create new app user."""
-
-def login_app_user(name: str, password: str) -> dict | None:
-    """Authenticate user; returns user dict on success."""
-
-def add_instagram_user(...) -> dict:
-    """Add new Instagram account to app user."""
-```
-
-#### persistence.py
-
-Data persistence layer (scan snapshots, diffs).
-
-```python
-def get_latest_scan_meta(reference_profile_id: str):
-    """Get metadata for latest scan."""
-    # Returns: { scan_id, timestamp, diff_id, follower_count }
-
-def store_scan_info(scan_id, app_user_id, profile_id, profile_list):
-    """Persist scan results."""
-```
-
-### Workers
-
-#### scan_worker.py
-
-Executes scans in background threads.
-
-```python
-def run_scoped_scan(app_user_id, data_dir, csrf_token,
-                     session_id, target_user_id) -> dict:
-    """
-    1. Fetch followers via Instagram API
-    2. Store in database
-    3. Compute diff against previous scan
-    4. Download and cache profile pictures
-    5. Return results
-    """
-```
-
-#### download_worker.py
-
-Background image downloading service.
-
-```python
-def start_download_worker():
-    """Start persistent background thread for image downloads."""
-
-def queue_image_download(pk_id: str, url: str, local_path: Path):
-    """Add image to download queue."""
-```
-
-## Session Management
-
-Users are identified via Flask sessions:
-
-```python
-session["app_user_id"]               # Current app user
-session["active_instagram_user_id"]  # Currently selected IG account
-```
-
-Session data is persisted and synced with the database on each request:
-
-```python
-def _sync_active_instagram_user_session(app_user_id: str):
-    """Keep browser session aligned with DB state."""
-```
-
-## Error Handling
-
-All routes follow a consistent error pattern:
-
-```python
-@bp.get("/me")
-def me():
-    current = _current_app_user()
-    if not current:
-        return jsonify(None)  # Not logged in
-
-    return jsonify(build_response(...))
-```
-
-**Status Codes:**
-
-- `200 OK` – Success
-- `201 Created` – Resource created
-- `202 Accepted` – Async operation started
-- `400 Bad Request` – Invalid input
-- `401 Unauthorized` – Not logged in
-- `404 Not Found` – Resource not found
-- `409 Conflict` – Scan already running
-- `500 Internal Server Error` – Server error
-
-## CORS Configuration
-
-Dev environment allows requests from:
-
-- `http://localhost:5173` (Vite frontend)
-- `http://localhost:4173` (Preview server)
-
-Production should restrict to your domain.
-
-## Environment Variables
-
-```env
-FLASK_DEBUG=1                    # Enable debug mode
-FLASK_ENV=development           # Environment
-APP_SECRET_KEY=your-secret-key  # Session secret
-```
-
-## Running the Backend
-
-**Development:**
-
-```bash
-flask --app meerkit.app run --debug --port 5000
-```
-
-**Production:**
-
-```bash
-FLASK_ENV=production APP_SECRET_KEY=<secure-key> \
-  flask --app meerkit.app run --port 5000
-```
-
-Or use a production WSGI server:
+Production-like run:
 
 ```bash
 gunicorn -w 4 -b 0.0.0.0:5000 "meerkit.app:create_app()"
 ```
 
-## Testing
+## Tests
 
 ```bash
-# Run all tests
 uv run pytest
-
-# Run specific test file
-uv run pytest tests/test_auth_response_sanitization.py
-
-# With coverage
-uv run pytest --cov=meerkit
 ```
 
-If you need the interpreter form explicitly, `uv run python -m pytest` is equivalent and avoids console-script path differences.
-
-## Common Patterns
-
-### Thread-Safe Database Operations
-
-```python
-db = get_worker_db()
-with db as conn:
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM scan_history WHERE ...")
-    results = cursor.fetchall()
-    # Connection auto-closes
-```
-
-### Async Scan Execution
-
-```python
-# Route accepts immediately
-@bp.post("/scan")
-def trigger_scan():
-    started = scan_runner.start_scan(...)
-    if not started:
-        return {"error": "Scan already running"}, 409
-    return {"message": "scan started"}, 202
-
-# Frontend polls for completion
-@bp.get("/scan/status")
-def scan_status():
-    return get_status(...)
-```
-
-### Request Validation
-
-```python
-@bp.post("/auth/register")
-def register():
-    payload = request.get_json(silent=True) or {}
-    name = (payload.get("name") or "").strip()
-
-    if not name or not password:
-        return {"error": "name and password required"}, 400
-```
-
----
-
-Next: [Frontend Guide](frontend.md) or [Full API Reference](api-reference.md)
+See also: [API Reference](api-reference.md), [Architecture](architecture.md), [Database](database.md)

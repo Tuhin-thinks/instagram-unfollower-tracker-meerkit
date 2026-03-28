@@ -83,6 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Synced documentation with the current codebase across API, backend, frontend, architecture, and database guides.
+- Updated API reference to include prediction, tasks, automation, scan cancellation, cache metrics, safelists, and alternative-account link endpoints.
+- Corrected documentation examples to match sanitized auth/account payloads (no credential fields in API responses).
+- Fixed developer docs to use the real Python package path (`meerkit/`) for linting/formatting/type-check commands.
 - Added `LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED` feature flag to support phased deprecation of legacy `user_details` cache writes.
 - Standardized target user data cache source through the gateway cache envelope flow while keeping optional compatibility writes.
 - Improved alternative-account followback assessment to prefer target graph follower evidence and robust key matching.
