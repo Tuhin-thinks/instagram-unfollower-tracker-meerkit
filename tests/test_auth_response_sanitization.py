@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from meerkit.app import create_app
 
 _SENSITIVE_KEYS = {
@@ -31,6 +33,21 @@ def _raw_instagram_user():
         'csrf_token_added_at': '2026-03-29T10:00:00',
         'session_id_added_at': '2026-03-29T10:00:00',
         'created_at': '2026-03-29T10:00:00',
+    }
+
+
+def _raw_instagram_user_with_age(hours_old: int):
+    added_at = (datetime.now() - timedelta(hours=hours_old)).isoformat()
+    return {
+        "instagram_user_id": "ig_123",
+        "name": "Primary",
+        "username": "primary_user",
+        "csrf_token": "secret_csrf",
+        "session_id": "secret_session",
+        "user_id": "secret_user_id",
+        "csrf_token_added_at": added_at,
+        "session_id_added_at": added_at,
+        "created_at": "2026-03-29T10:00:00",
     }
 
 
@@ -99,4 +116,50 @@ def test_instagram_user_detail_response_sanitizes_sensitive_fields(monkeypatch):
     assert response.status_code == 200
     payload = response.get_json()
     _assert_no_sensitive_keys(payload)
+
+
+def test_instagram_user_detail_response_includes_old_credential_status(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "meerkit.routes.auth._current_app_user",
+        lambda: ("app_test_user", "Test User"),
+    )
+    monkeypatch.setattr(
+        "meerkit.routes.auth.auth_service.get_instagram_user",
+        lambda app_user_id, instagram_user_id: _raw_instagram_user_with_age(49),
+    )
+
+    response = client.get("/api/auth/instagram-users/ig_123")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    _assert_no_sensitive_keys(payload)
+    assert payload["credentials_old"] is True
+    assert isinstance(payload["credentials_age_hours"], int)
+    assert payload["credentials_age_hours"] >= 49
+
+
+def test_instagram_user_detail_response_includes_fresh_credential_status(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "meerkit.routes.auth._current_app_user",
+        lambda: ("app_test_user", "Test User"),
+    )
+    monkeypatch.setattr(
+        "meerkit.routes.auth.auth_service.get_instagram_user",
+        lambda app_user_id, instagram_user_id: _raw_instagram_user_with_age(2),
+    )
+
+    response = client.get("/api/auth/instagram-users/ig_123")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    _assert_no_sensitive_keys(payload)
+    assert payload["credentials_old"] is False
+    assert isinstance(payload["credentials_age_hours"], int)
+    assert payload["credentials_age_hours"] >= 2
     assert payload['name'] == 'Primary'

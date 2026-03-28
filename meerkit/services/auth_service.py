@@ -102,15 +102,51 @@ def get_instagram_users(app_user_id: str) -> list[dict]:
     return payload if isinstance(payload, list) else []
 
 
+_CREDENTIAL_STALE_HOURS = 24
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _credential_age_hours(user: dict) -> int | None:
+    session_added_at = _parse_iso_datetime(user.get("session_id_added_at"))
+    csrf_added_at = _parse_iso_datetime(user.get("csrf_token_added_at"))
+    created_at = _parse_iso_datetime(user.get("created_at"))
+
+    anchor = session_added_at or csrf_added_at or created_at
+    if anchor is None:
+        return None
+
+    elapsed_seconds = max(0.0, (datetime.now() - anchor).total_seconds())
+    return int(elapsed_seconds // 3600)
+
+
+def _credentials_old(user: dict) -> bool:
+    age_hours = _credential_age_hours(user)
+    if age_hours is None:
+        # Missing timestamps should be treated conservatively.
+        return True
+    return age_hours >= _CREDENTIAL_STALE_HOURS
+
+
 def sanitize_instagram_user(user: dict | None) -> dict | None:
     """Return a response-safe instagram user object without credential fields."""
     if not user:
         return None
+    age_hours = _credential_age_hours(user)
     return {
         "instagram_user_id": user.get("instagram_user_id"),
         "name": user.get("name"),
         "username": user.get("username"),
         "created_at": user.get("created_at"),
+        "credentials_old": _credentials_old(user),
+        "credentials_age_hours": age_hours,
     }
 
 

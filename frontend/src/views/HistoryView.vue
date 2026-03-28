@@ -45,6 +45,10 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleString()
 }
 
+function safeCount(value: number | null | undefined) {
+  return typeof value === 'number' ? value : 0
+}
+
 function currentUnfollowerUsernames() {
   return (selectedDiff.value?.unfollowers || [])
     .map((item) => item.username?.trim())
@@ -153,9 +157,15 @@ async function handleLinkedAccountsSaved() {
             <p class="text-sm font-semibold text-slate-200">
               {{ formatDate(scan.timestamp) }}
             </p>
-            <p class="text-xs text-slate-500 mt-0.5">
-              {{ scan.follower_count.toLocaleString() }} followers · {{ scan.scan_id }}
-            </p>
+            <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+              <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300 font-semibold">
+                +{{ safeCount(scan.follower_count).toLocaleString() }} followers
+              </span>
+              <span class="inline-flex items-center rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-300 font-semibold">
+                -{{ safeCount(scan.unfollower_count).toLocaleString() }} unfollowers
+              </span>
+              <span class="text-slate-500">· {{ scan.scan_id }}</span>
+            </div>
           </div>
 
           <button

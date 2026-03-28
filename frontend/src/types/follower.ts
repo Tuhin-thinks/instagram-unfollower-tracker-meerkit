@@ -25,7 +25,8 @@ export interface ScanStatus {
 export interface ScanMeta {
   scan_id: string
   timestamp: string
-  follower_count: number
+  follower_count: number | null
+  unfollower_count?: number | null
   diff_id: string | null
 }
 
@@ -49,6 +50,8 @@ export interface InstagramUserRecord {
   name: string
   username?: string | null
   created_at?: string | null
+  credentials_old?: boolean
+  credentials_age_hours?: number | null
 }
 
 export interface MeResponse {

@@ -311,6 +311,46 @@ const parsedCookiePreview = computed<CookiePreview | null>(() => {
     return parseCookieString(raw);
 });
 
+function formatCredentialAge(ageHours: number): string {
+    if (ageHours < 1) {
+        return "Updated recently";
+    }
+    if (ageHours < 24) {
+        return `Updated ${ageHours} hour${ageHours === 1 ? "" : "s"} ago`;
+    }
+
+    const days = Math.floor(ageHours / 24);
+    const remainingHours = ageHours % 24;
+    const dayPart = `${days} day${days === 1 ? "" : "s"}`;
+    if (remainingHours === 0) {
+        return `Updated ${dayPart} ago`;
+    }
+
+    const hourPart = `${remainingHours} hour${remainingHours === 1 ? "" : "s"}`;
+    return `Updated ${dayPart} ${hourPart} ago`;
+}
+
+const selectedCredentialStatus = computed(() => {
+    const user = selectedInstagramUser.value;
+    if (!user) {
+        return null;
+    }
+    const isOld = Boolean(user.credentials_old);
+    const ageHours =
+        typeof user.credentials_age_hours === "number"
+            ? user.credentials_age_hours
+            : null;
+    return {
+        isOld,
+        ageHours,
+        label: isOld ? "Old" : "Fresh",
+        subtitle:
+            ageHours === null
+                ? "Age unknown"
+                : formatCredentialAge(ageHours),
+    };
+});
+
 function clearDetailsCacheInterval(): void {
     if (!detailsCacheSizeInterval) {
         return;
@@ -766,6 +806,18 @@ const discoveryUsername = computed(() => {
                         <p v-if="selectedInstagramUser.username"><span class="text-slate-400 font-medium">Username:</span> <span class="text-slate-200">{{ selectedInstagramUser.username }}</span></p>
                         <p v-if="selectedInstagramUser.created_at"><span class="text-slate-400 font-medium">Created:</span> <span class="text-slate-200">{{ new Date(selectedInstagramUser.created_at).toLocaleString() }}</span></p>
 
+                        <div
+                            v-if="selectedCredentialStatus?.isOld"
+                            class="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
+                        >
+                            <p class="text-xs font-semibold uppercase tracking-wide text-amber-300">
+                                Credential Warning
+                            </p>
+                            <p class="mt-1 text-sm text-amber-200">
+                                This account's credentials are old ({{ selectedCredentialStatus.subtitle }}). Refresh them in the Credentials tab to reduce auth failures.
+                            </p>
+                        </div>
+
                         <div class="mt-5 flex gap-2">
                             <button
                                 :disabled="switchPending"
@@ -920,6 +972,23 @@ const discoveryUsername = computed(() => {
                         @submit.prevent="submitInstagramUserEdits()"
                     >
                         <h3 class="text-sm font-semibold text-slate-200">Update Account Details</h3>
+                        <div
+                            v-if="selectedCredentialStatus"
+                            class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3"
+                        >
+                            <p class="text-xs text-slate-500 uppercase tracking-wide">Credential status</p>
+                            <div class="mt-2 flex items-center gap-2">
+                                <span
+                                    class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold border"
+                                    :class="selectedCredentialStatus.isOld
+                                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                        : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'"
+                                >
+                                    {{ selectedCredentialStatus.label }}
+                                </span>
+                                <span class="text-xs text-slate-400">{{ selectedCredentialStatus.subtitle }}</span>
+                            </div>
+                        </div>
                         <input
                             v-model="accountUpdateForm.display_name"
                             placeholder="Display name"
