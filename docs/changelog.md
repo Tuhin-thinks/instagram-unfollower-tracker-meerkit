@@ -81,6 +81,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Changed
+
+- Added `LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED` feature flag to support phased deprecation of legacy `user_details` cache writes.
+- Standardized target user data cache source through the gateway cache envelope flow while keeping optional compatibility writes.
+- Improved alternative-account followback assessment to prefer target graph follower evidence and robust key matching.
+
 ### Planned Features
 
 - [ ] PostgreSQL support for scalability

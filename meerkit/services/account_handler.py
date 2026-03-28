@@ -544,6 +544,7 @@ def _assess_alt_account_followback(
     target_profile_id: str,
     target_profile: dict | None,
     reference_follower_ids: set[str],
+    target_follower_ids: set[str] | None = None,
 ) -> dict[str, object]:
     primary_identity_keys: set[str] = {target_profile_id}
     username = _as_str((target_profile or {}).get("username"))
@@ -563,12 +564,17 @@ def _assess_alt_account_followback(
             "linked_alt_count": 0,
         }
 
-    # Check whether each alt account appears in the reference profile's own
-    # last-fetched followers list (i.e. "does the alt account follow me?").
-    my_followers = reference_follower_ids or db_service.get_latest_scanned_profile_ids(
-        app_user_id=app_user_id,
-        reference_profile_id=reference_profile_id,
-    )
+    # Prefer target graph followers when available; fall back to active account
+    # latest followers when graph data is not present.
+    my_followers = target_follower_ids or reference_follower_ids
+    if not my_followers:
+        my_followers = db_service.get_latest_scanned_profile_ids(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+        )
+
+    follower_lookup = {follower_id for follower_id in my_followers if follower_id}
+    follower_lookup_lower = {follower_id.lower() for follower_id in follower_lookup}
 
     matched_alt_identity_keys: list[str] = []
     matched_alt_usernames: list[str] = []
@@ -576,12 +582,22 @@ def _assess_alt_account_followback(
         alt_identity_key = link.get("alt_identity_key")
         if not isinstance(alt_identity_key, str):
             continue
-        if alt_identity_key not in my_followers:
+
+        alt_username = link.get("alt_normalized_username")
+        candidate_keys: set[str] = {alt_identity_key}
+        if isinstance(alt_username, str) and alt_username:
+            candidate_keys.add(alt_username)
+
+        if not any(
+            candidate in follower_lookup or candidate.lower() in follower_lookup_lower
+            for candidate in candidate_keys
+        ):
             continue
+
         matched_alt_identity_keys.append(alt_identity_key)
-        alt_username = link.get("alt_normalized_username") or alt_identity_key
-        if isinstance(alt_username, str):
-            matched_alt_usernames.append(alt_username)
+        display_username = alt_username or alt_identity_key
+        if isinstance(display_username, str):
+            matched_alt_usernames.append(display_username)
 
     matched_alt_identity_keys = sorted(set(matched_alt_identity_keys))
     matched_alt_usernames = sorted(set(matched_alt_usernames))
@@ -662,6 +678,7 @@ def _load_followback_computation_context(
         target_profile_id=pk_id,
         target_profile=target_profile,
         reference_follower_ids=latest_follower_ids,
+        target_follower_ids=target_followers,
     )
     feature_breakdown = _build_feature_breakdown(
         target_profile=target_profile,

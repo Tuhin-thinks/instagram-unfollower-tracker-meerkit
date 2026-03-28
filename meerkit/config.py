@@ -2,6 +2,14 @@ import os
 import random
 from pathlib import Path
 
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # Workspace root is the parent of this meerkit/ package
 WORKSPACE_ROOT = Path(__file__).parent.parent
 
@@ -25,6 +33,13 @@ MAX_IMAGE_DOWNLOAD_WORKERS = 10
 MAX_PREDICTION_REFRESH_WORKERS = 3
 MAX_AUTOMATION_WORKERS = 3
 MAX_USER_DETAILS_FETCH_THREADS = 8
+
+# Legacy cache compatibility
+# Writes to legacy user_details cache files can be disabled once all consumers
+# are moved to instagram_gateway cache envelopes.
+LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED = _env_flag(
+    "LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED", True
+)
 
 # Instagram API interaction
 # Number of times to retry a follow/unfollow call before giving up on that action.

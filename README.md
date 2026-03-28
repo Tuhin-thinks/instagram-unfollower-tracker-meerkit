@@ -78,6 +78,12 @@ If you are already inside an activated virtual environment and want the most det
 python -m pytest
 ```
 
+Optional deprecation flag for cache migration:
+
+```bash
+export LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED=0
+```
+
 ---
 
 ## 📊 Product Preview

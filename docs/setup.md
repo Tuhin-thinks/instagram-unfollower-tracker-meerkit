@@ -45,6 +45,13 @@ If you want to override Flask's default development secret, export `APP_SECRET_K
 export APP_SECRET_KEY=dev-secret-key-change-in-production
 ```
 
+Optional cache migration flag:
+
+```bash
+# Disable writes to legacy user_details cache files
+export LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED=0
+```
+
 #### Getting Instagram Credentials
 
 To obtain the credentials you will later paste into the app:
@@ -120,6 +127,8 @@ uv run pytest
 ```
 
 If you prefer running through the interpreter directly, use `uv run python -m pytest`.
+
+If you disabled legacy cache writes, run your test suite once before deploying to ensure your environment no longer depends on legacy cache files.
 
 ### Frontend Build Verification
 

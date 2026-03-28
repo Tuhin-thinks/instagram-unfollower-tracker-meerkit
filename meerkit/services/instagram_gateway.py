@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 import insta_interface as ii
+from meerkit.config import LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED
 from meerkit.services import user_details_cache
 from meerkit.services.instagram_api_usage import instagram_api_usage_tracker
 from meerkit.services.instagram_response_cache import (
@@ -204,10 +205,11 @@ class InstagramGateway:
             caller_method=caller_method,
             execute=lambda: ii.get_user_data(profile=profile),
         )
-        try:
-            user_details_cache.save(app_user_id, instagram_user_id, result)
-        except Exception:
-            pass
+        if LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED:
+            try:
+                user_details_cache.save(app_user_id, instagram_user_id, result)
+            except Exception:
+                pass
         return result
 
     def get_target_user_data(
@@ -221,34 +223,29 @@ class InstagramGateway:
         caller_method: str,
         force_refresh: bool = False,
     ) -> dict[str, object]:
-        if not force_refresh:
-            cached = user_details_cache.load_target(
-                app_user_id, instagram_user_id, target_user_id
-            )
-            if cached is not None:
-                instagram_api_usage_tracker.track_cache_hit(
-                    app_user_id=app_user_id,
-                    instagram_user_id=instagram_user_id,
-                    category="user_data_fetch",
-                    caller_service=caller_service,
-                    caller_method=caller_method,
-                )
-                return cached
-
-        result: dict[str, object] = instagram_api_usage_tracker.track_call(
+        result = self._tracked(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="user_data_fetch",
             caller_service=caller_service,
             caller_method=caller_method,
             execute=lambda: ii.get_target_user_data(profile, target_user_id),
+            cache_key_parts=self._summary_cache_key(
+                operation="get_target_user_data",
+                target_user_id=target_user_id,
+            ),
+            serialize_for_cache=_serialize_summary,
+            deserialize_from_cache=_deserialize_summary,
+            force_refresh=force_refresh,
         )
-        try:
-            user_details_cache.save_target(
-                app_user_id, instagram_user_id, target_user_id, result
-            )
-        except Exception:
-            pass
+        if LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED:
+            try:
+                # Keep this write for consumers that still read this legacy cache path.
+                user_details_cache.save_target(
+                    app_user_id, instagram_user_id, target_user_id, result
+                )
+            except Exception:
+                pass
         return result
 
     def get_target_followers_v2(

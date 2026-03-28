@@ -39,6 +39,15 @@ export FLASK_DEBUG=1
 export FLASK_ENV=development
 ```
 
+Legacy cache migration flag:
+
+```bash
+# Optional: disable writes to legacy user_details cache files.
+# Keep this off only after confirming your deployment reads the
+# instagram_gateway cache envelope paths.
+export LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED=0
+```
+
 Instagram credentials are added through the authenticated app UI, not from environment variables.
 
 ## Running Locally
@@ -111,6 +120,18 @@ uv run pytest --cov=meerkit --cov-report=html
 
 # Interpreter-based fallback
 uv run python -m pytest
+```
+
+## Cache Migration Notes
+
+The gateway cache (`data/cache/.../instagram_gateway/...`) is now the source of truth for target user lookups.
+
+`user_details.json` legacy files are still optionally written for compatibility and can be disabled with `LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED=0`.
+
+After disabling and validating your deployment, you can clean up legacy files:
+
+```bash
+find data/cache -type f \( -name "user_details.json" -o -name "*_user_details.json" \) -delete
 ```
 
 ### Frontend Tests
