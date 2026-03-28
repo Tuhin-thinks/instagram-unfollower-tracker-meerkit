@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useQuery } from '@tanstack/vue-query'
+import { computed, onMounted, ref } from 'vue'
 import FollowerCard from '../components/FollowerCard.vue'
 import AnalyticsChart from '../components/AnalyticsChart.vue'
 import { HISTORY_REQUEST_DAYS } from '../constants/history'
@@ -13,12 +12,53 @@ const props = defineProps<{
 
 const activeTab = ref<'history' | 'analytics'>('history')
 const UNKNOWN_DATE_KEY = 'unknown-date'
+const pageSize = 10
 
-const { data: history, isLoading } = useQuery({
-  queryKey: ['history', props.profileId, HISTORY_REQUEST_DAYS],
-  queryFn: () => api.getHistory(HISTORY_REQUEST_DAYS),
-  staleTime: Infinity,
-  refetchOnWindowFocus: false,
+const scanHistory = ref<ScanMeta[]>([])
+const loadingHistory = ref(false)
+const historyError = ref('')
+const hasMore = ref(true)
+const offset = ref(0)
+
+async function loadHistory(reset = false) {
+  if (loadingHistory.value) {
+    return
+  }
+  loadingHistory.value = true
+  historyError.value = ''
+
+  if (reset) {
+    offset.value = 0
+    hasMore.value = true
+    scanHistory.value = []
+  }
+
+  try {
+    const items = await api.getHistory({
+      days: HISTORY_REQUEST_DAYS,
+      limit: pageSize,
+      offset: offset.value,
+    })
+    if (reset) {
+      scanHistory.value = items
+    } else {
+      scanHistory.value = [...scanHistory.value, ...items]
+    }
+    offset.value += items.length
+    hasMore.value = items.length === pageSize
+  } catch {
+    historyError.value = 'Could not load scan history right now.'
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+function refreshHistory() {
+  void loadHistory(true)
+}
+
+onMounted(() => {
+  void loadHistory(true)
 })
 
 interface ScanDateGroup {
@@ -63,7 +103,7 @@ function parseTimestamp(value: string) {
 }
 
 const groupedHistory = computed<ScanDateGroup[]>(() => {
-  const scans = (history.value || []).slice().sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp))
+  const scans = scanHistory.value.slice().sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp))
   const grouped = new Map<string, ScanMeta[]>()
 
   for (const scan of scans) {
@@ -214,13 +254,31 @@ async function handleLinkedAccountsSaved() {
 
     <!-- History tab -->
     <div v-if="activeTab === 'history'">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <p class="text-xs text-slate-400">Showing recent history (last 7 days)</p>
+        <button
+          class="btn-ghost rounded-lg px-3 py-1.5 text-xs"
+          :disabled="loadingHistory"
+          @click="refreshHistory"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div
+        v-if="historyError"
+        class="rounded-xl border border-rose-400/25 bg-rose-500/10 text-rose-200 px-4 py-3 text-sm mb-3"
+      >
+        {{ historyError }}
+      </div>
+
       <!-- Loading -->
-      <div v-if="isLoading" class="space-y-3">
+      <div v-if="loadingHistory && !scanHistory.length" class="space-y-3">
         <div v-for="i in 4" :key="i" class="h-16 bg-[#16213a] rounded-xl border border-white/[0.06] shimmer" />
       </div>
 
       <!-- Empty -->
-      <div v-else-if="!history?.length" class="text-center py-16 text-slate-500">
+      <div v-else-if="!scanHistory.length" class="text-center py-16 text-slate-500">
         <p class="text-2xl mb-2">📋</p>
         <p class="font-medium text-slate-400">No scans yet</p>
         <p class="text-sm mt-1">Completed scans will appear here.</p>
@@ -294,6 +352,20 @@ async function handleLinkedAccountsSaved() {
             </div>
           </div>
         </details>
+
+        <div class="flex items-center justify-between rounded-xl border border-white/[0.07] bg-[#101b30]/70 px-4 py-3">
+          <button
+            v-if="hasMore"
+            class="btn-ghost rounded-lg px-4 py-2 text-sm font-semibold"
+            :disabled="loadingHistory"
+            @click="loadHistory(false)"
+          >
+            {{ loadingHistory ? 'Loading...' : 'Load 10 more' }}
+          </button>
+          <p v-else class="text-xs text-slate-400">
+            End of history.
+          </p>
+        </div>
       </div>
     </div>
 

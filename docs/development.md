@@ -19,12 +19,7 @@ git clone https://github.com/Tuhin-thinks/meerkit.git
 cd meerkit
 
 # Python setup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-
-# Install dev dependencies
-pip install -e ".[dev]"
+uv sync --dev
 
 # Node setup
 cd frontend
@@ -51,8 +46,7 @@ Instagram credentials are added through the authenticated app UI, not from envir
 ### Terminal 1: Backend
 
 ```bash
-source .venv/bin/activate
-flask --app meerkit.app run --debug --port 5000
+uv run flask --app meerkit.app run --debug --port 5000
 ```
 
 ### Terminal 2: Frontend
@@ -65,9 +59,8 @@ npm run dev
 ### Terminal 3: Optional - Watch Backend Changes
 
 ```bash
-source .venv/bin/activate
-watchmedo auto-restart -d backend -p '*.py' -- \
-  flask --app meerkit.app run --debug --port 5000
+uv run watchmedo auto-restart -d meerkit -p '*.py' -- \
+    flask --app meerkit.app run --debug --port 5000
 ```
 
 ## Code Style & Linting
@@ -108,16 +101,16 @@ npm run type-check
 
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run specific file
-pytest backend/tests/test_auth_service.py
+uv run pytest tests/test_auth_response_sanitization.py
 
 # Run with coverage
-pytest --cov=backend --cov-report=html
+uv run pytest --cov=meerkit --cov-report=html
 
-# Watch mode (auto-rerun on changes)
-pytest-watch
+# Interpreter-based fallback
+uv run python -m pytest
 ```
 
 ### Frontend Tests
@@ -405,14 +398,16 @@ def complex_calculation(x: int) -> int:
 
 ## Troubleshooting Development Issues
 
-### "ModuleNotFoundError: No module named 'backend'"
+### "ModuleNotFoundError: No module named 'meerkit'"
 
 ```bash
-# Ensure backend/ is in sys.path
-python -c "import sys; print(sys.path)"
+# Ensure the environment is synced and the package metadata is installed
+uv sync --dev
 
-# Install package in dev mode
-pip install -e .
+# Then run tests using either entrypoint
+uv run pytest
+# or
+uv run python -m pytest
 ```
 
 ### "Port 5000 already in use"

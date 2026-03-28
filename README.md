@@ -53,20 +53,30 @@ Meerkit is intended for controlled usage and experimentation.
 git clone <repo-url>
 cd meerkit
 
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+uv sync --dev
 
 cd frontend && npm install && cd ..
 
 # terminal 1
-flask --app meerkit.app run --debug --port 5000
+uv run flask --app meerkit.app run --debug --port 5000
 
 # terminal 2
 cd frontend && npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173).
+
+Run the backend test suite with:
+
+```bash
+uv run pytest
+```
+
+If you are already inside an activated virtual environment and want the most deterministic invocation, use:
+
+```bash
+python -m pytest
+```
 
 ---
 
@@ -101,8 +111,7 @@ See full walkthrough: [docs/showcase.md](docs/showcase.md)
 Run docs locally:
 
 ```bash
-pip install mkdocs mkdocs-material
-mkdocs serve
+uv run mkdocs serve
 ```
 
 ---

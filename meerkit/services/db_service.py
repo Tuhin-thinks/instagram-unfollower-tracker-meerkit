@@ -556,11 +556,18 @@ def get_diff_by_id(diff_id: str) -> dict | None:
             return None
 
 
-def get_scan_history(reference_profile_id: str, days: int = 7) -> list[dict]:
+def get_scan_history(
+    reference_profile_id: str,
+    days: int = 7,
+    limit: int = 10,
+    offset: int = 0,
+) -> list[dict]:
     # [
     #     scan_id, diff_id, timestamp, follower_count, unfollower_count
     # ]
     days = max(1, int(days))
+    limit = max(1, int(limit))
+    offset = max(0, int(offset))
     db = get_worker_db()
     with db as conn:
         cursor = conn.cursor()
@@ -572,8 +579,9 @@ def get_scan_history(reference_profile_id: str, days: int = 7) -> list[dict]:
             WHERE sh.reference_profile_id = ?
               AND datetime(sh.scan_time) >= datetime('now', ? || ' days')
             ORDER BY sh.scan_time DESC
+                        LIMIT ? OFFSET ?
             """,
-            (reference_profile_id, f"-{days}"),
+                        (reference_profile_id, f"-{days}", limit, offset),
         )
         results = cursor.fetchall()
         history = []

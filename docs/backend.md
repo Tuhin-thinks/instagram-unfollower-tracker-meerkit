@@ -343,14 +343,16 @@ gunicorn -w 4 -b 0.0.0.0:5000 "meerkit.app:create_app()"
 
 ```bash
 # Run all tests
-python -m pytest
+uv run pytest
 
 # Run specific test file
-python -m pytest backend/tests/test_auth_service.py
+uv run pytest tests/test_auth_response_sanitization.py
 
 # With coverage
-pytest --cov=backend
+uv run pytest --cov=meerkit
 ```
+
+If you need the interpreter form explicitly, `uv run python -m pytest` is equivalent and avoids console-script path differences.
 
 ## Common Patterns
 

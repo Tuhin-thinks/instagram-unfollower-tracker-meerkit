@@ -23,11 +23,9 @@ Meerkit is your follower intel dashboard: scan, compare, predict, and act.
 ## Start in 2 Minutes
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+uv sync --dev
 cd frontend && npm install && cd ..
-flask --app meerkit.app run --debug --port 5000
+uv run flask --app meerkit.app run --debug --port 5000
 ```
 
 In another terminal:
@@ -38,6 +36,12 @@ npm run dev
 ```
 
 Open http://localhost:5173.
+
+Run tests with:
+
+```bash
+uv run pytest
+```
 
 ## Explore Docs
 

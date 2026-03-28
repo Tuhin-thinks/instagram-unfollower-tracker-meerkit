@@ -2,13 +2,16 @@ from typing import Any, cast
 
 from flask import Blueprint, jsonify, request
 
-from meerkit.config import HISTORY_DEFAULT_DAYS, HISTORY_MAX_DAYS
+from meerkit.config import HISTORY_ALL_TIME_DAYS, HISTORY_DEFAULT_DAYS, HISTORY_MAX_DAYS
 from meerkit.routes import get_active_context
 from meerkit.services import account_handler, persistence
 from meerkit.services import db_service as _db_service
 from meerkit.services.db_service import get_scan_analytics, get_scan_history
 
 bp = Blueprint("history", __name__, url_prefix="/api")
+
+HISTORY_PAGE_SIZE_DEFAULT = 10
+HISTORY_PAGE_SIZE_MAX = 200
 
 
 def _to_lower(value: str | None) -> str:
@@ -156,15 +159,39 @@ def history():
         return jsonify(body), status
 
     instagram_user = cast(dict, context)
+    history_range = (request.args.get("range") or "recent").strip().lower()
+
     try:
         requested_days = int(request.args.get("days", HISTORY_DEFAULT_DAYS))
     except (TypeError, ValueError):
         requested_days = HISTORY_DEFAULT_DAYS
 
-    max_days = max(1, HISTORY_MAX_DAYS)
-    days = min(max(1, requested_days), max_days)
+    if history_range == "all_time":
+        days = max(1, HISTORY_ALL_TIME_DAYS)
+    else:
+        max_days = max(1, HISTORY_MAX_DAYS)
+        days = min(max(1, requested_days), max_days)
 
-    return jsonify(get_scan_history(instagram_user["instagram_user_id"], days))
+    try:
+        requested_limit = int(request.args.get("limit", HISTORY_PAGE_SIZE_DEFAULT))
+    except (TypeError, ValueError):
+        requested_limit = HISTORY_PAGE_SIZE_DEFAULT
+    limit = max(1, min(requested_limit, HISTORY_PAGE_SIZE_MAX))
+
+    try:
+        requested_offset = int(request.args.get("offset", 0))
+    except (TypeError, ValueError):
+        requested_offset = 0
+    offset = max(0, requested_offset)
+
+    return jsonify(
+        get_scan_history(
+            instagram_user["instagram_user_id"],
+            days,
+            limit,
+            offset,
+        )
+    )
 
 
 @bp.get("/scan-analytics")

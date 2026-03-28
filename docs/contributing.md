@@ -151,7 +151,7 @@ docs: update API reference with new endpoints
 1. **Update** the README if needed
 2. **Update** docs in `docs/` if adding features
 3. **Add tests** for new functionality
-4. **Ensure** all tests pass: `pytest` and `npm test`
+4. **Ensure** all tests pass: `uv run pytest` and the relevant frontend checks
 5. **Request review** from maintainers
 
 **PR Template:**
@@ -255,7 +255,7 @@ Run tests:
 
 ```bash
 # Backend
-pytest
+uv run pytest
 
 # Frontend
 npm run test

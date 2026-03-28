@@ -23,14 +23,8 @@ cd meerkit
 ### Step 2: Set Up Python Environment
 
 ```bash
-# Create a virtual environment
-python3 -m venv .venv
-
-# Activate it
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install dependencies
-pip install -e .
+# Create the project environment and install app + dev dependencies
+uv sync --dev
 ```
 
 ### Step 3: Set Up Frontend
@@ -72,8 +66,7 @@ These credentials are stored through the app's account management flow, not thro
 Open Terminal 1:
 
 ```bash
-source .venv/bin/activate
-flask --app meerkit.app run --debug --port 5000
+uv run flask --app meerkit.app run --debug --port 5000
 ```
 
 You should see:
@@ -120,6 +113,14 @@ curl http://localhost:5000/api/auth/me
 # Should return: null (if not logged in)
 ```
 
+### Backend Test Check
+
+```bash
+uv run pytest
+```
+
+If you prefer running through the interpreter directly, use `uv run python -m pytest`.
+
 ### Frontend Build Verification
 
 ```bash
@@ -134,7 +135,7 @@ npm run build
 
 ```bash
 # Check your Python version
-python3 --version  # Should be ≥ 3.12
+uv run python --version  # Should be ≥ 3.12
 
 # If not, install Python 3.12+ from python.org
 ```

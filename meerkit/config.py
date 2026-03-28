@@ -76,6 +76,8 @@ SCAN_STALE_STARTUP_GRACE_SECONDS = int(
 # Default and maximum day-window for /history responses.
 HISTORY_DEFAULT_DAYS = int(os.environ.get("HISTORY_DEFAULT_DAYS", "7"))
 HISTORY_MAX_DAYS = int(os.environ.get("HISTORY_MAX_DAYS", "7"))
+# Day-window used when /history range=all_time is requested.
+HISTORY_ALL_TIME_DAYS = int(os.environ.get("HISTORY_ALL_TIME_DAYS", "30"))
 
 # Downloads
 # HTTP request timeout (seconds) when downloading a user's profile picture.
