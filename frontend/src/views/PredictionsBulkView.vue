@@ -257,6 +257,10 @@ function getRowTitle(row: BatchRow): string {
     return row.rawInput;
 }
 
+function createPredictionSessionId(): string {
+    return `pred_session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 async function pollTask(row: BatchRow, taskId: string, predictionId: string) {
     const maxPolls = 30;
     for (let attempt = 0; attempt < maxPolls && !disposed; attempt += 1) {
@@ -292,7 +296,43 @@ async function pollTask(row: BatchRow, taskId: string, predictionId: string) {
     }
 }
 
-async function executeRow(row: BatchRow) {
+async function runBatch() {
+    rows.value = parseTargets(input.value);
+
+    if (!rows.value.length) {
+        return;
+    }
+
+    isRunning.value = true;
+    setBulkBatchRunning(true);
+    const predictionSessionId = createPredictionSessionId();
+    try {
+        const queue = rows.value.filter((row) => row.status === "ready");
+        const workers = Array.from({ length: Math.min(3, queue.length) }).map(
+            async () => {
+                while (queue.length && !disposed) {
+                    const row = queue.shift();
+                    if (!row) {
+                        return;
+                    }
+                    await executeRow(row, predictionSessionId);
+                }
+            },
+        );
+
+        await Promise.all(workers);
+    } finally {
+        if (!disposed) {
+            isRunning.value = false;
+        }
+        setBulkBatchRunning(false);
+    }
+}
+
+async function executeRow(
+    row: BatchRow,
+    predictionSessionId: string,
+) {
     if (!row.username && !row.userId) {
         row.status = "invalid";
         row.message = "Enter a username, Instagram profile link, or numeric user ID.";
@@ -306,6 +346,7 @@ async function executeRow(row: BatchRow) {
                 user_id: row.userId ?? undefined,
                 refresh: false,
                 force_background: false,
+                prediction_session_id: predictionSessionId,
             });
 
         row.prediction = response.prediction;
@@ -331,38 +372,6 @@ async function executeRow(row: BatchRow) {
         );
         row.status = "error";
         row.message = message;
-    }
-}
-
-async function runBatch() {
-    rows.value = parseTargets(input.value);
-
-    if (!rows.value.length) {
-        return;
-    }
-
-    isRunning.value = true;
-    setBulkBatchRunning(true);
-    try {
-        const queue = rows.value.filter((row) => row.status === "ready");
-        const workers = Array.from({ length: Math.min(3, queue.length) }).map(
-            async () => {
-                while (queue.length && !disposed) {
-                    const row = queue.shift();
-                    if (!row) {
-                        return;
-                    }
-                    await executeRow(row);
-                }
-            },
-        );
-
-        await Promise.all(workers);
-    } finally {
-        if (!disposed) {
-            isRunning.value = false;
-        }
-        setBulkBatchRunning(false);
     }
 }
 

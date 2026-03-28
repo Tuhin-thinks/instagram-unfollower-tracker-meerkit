@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { RouterLink } from "vue-router";
 import PredictionStatusBadge from "../components/prediction/PredictionStatusBadge.vue";
-import ProbabilityChip from "../components/prediction/ProbabilityChip.vue";
 import * as api from "../services/api";
 import { extractApiErrorMessage } from "../services/targetAccessErrors";
-import type { PredictionRecord } from "../types/prediction";
+import type { PredictionHistorySession } from "../types/prediction";
 
 const props = defineProps<{
     profileId: string;
@@ -14,7 +12,7 @@ const props = defineProps<{
 }>();
 
 const router = useRouter();
-const predictionHistory = ref<PredictionRecord[]>([]);
+const predictionHistory = ref<PredictionHistorySession[]>([]);
 const loading = ref(false);
 const historyError = ref("");
 const hasMore = ref(true);
@@ -23,6 +21,10 @@ const pageSize = 10;
 
 function openBulkPredictions() {
     void router.push({ name: "predictions" });
+}
+
+function formatSessionCount(value: number): string {
+    return `${value} ${value === 1 ? "account" : "accounts"}`;
 }
 
 async function loadPredictionHistory(reset = false) {
@@ -144,18 +146,24 @@ onMounted(() => {
             <div class="divide-y divide-white/[0.07]">
                 <div
                     v-for="entry in predictionHistory"
-                    :key="entry.prediction_id"
-                    class="px-4 py-3 grid lg:grid-cols-[1.3fr,0.8fr,1fr,1fr] gap-3 items-start"
+                    :key="entry.prediction_session_id"
+                    class="px-4 py-3 grid lg:grid-cols-[1.4fr,0.8fr,180px] gap-3 items-start"
                 >
                     <div>
                         <p class="font-semibold text-sm text-slate-100">
-                            @{{ entry.target_username || "unknown" }}
+                            Session {{ entry.prediction_session_id.slice(-8) }}
                         </p>
-                        <p class="text-[11px] text-slate-500 mt-1 break-all">
-                            {{ entry.target_profile_id }}
+                        <p class="text-xs text-cyan-300 mt-1">
+                            Scanned for {{ formatSessionCount(entry.prediction_count) }}
                         </p>
                         <p class="text-[11px] text-slate-500 mt-1">
-                            {{ new Date(entry.requested_at).toLocaleString() }}
+                            {{ new Date(entry.last_requested_at).toLocaleString() }}
+                        </p>
+                        <p
+                            v-if="entry.latest_target_username"
+                            class="text-[11px] text-slate-500 mt-1"
+                        >
+                            Latest target: @{{ entry.latest_target_username }}
                         </p>
                     </div>
 
@@ -163,24 +171,11 @@ onMounted(() => {
                         <PredictionStatusBadge :status="entry.status" />
                     </div>
 
-                    <div>
-                        <ProbabilityChip
-                            :probability="entry.probability"
-                            :confidence="entry.confidence"
-                        />
-                    </div>
-
-                    <div class="lg:justify-self-end">
-                        <RouterLink
-                            v-if="entry.target_username"
-                            :to="{
-                                name: 'discovery',
-                                params: { username: entry.target_username },
-                            }"
-                            class="text-xs text-cyan-400 hover:text-cyan-300 font-medium"
-                        >
-                            Open discovery
-                        </RouterLink>
+                    <div class="w-[100px] text-xs text-slate-300 space-y-1 justify-self-end text-left">
+                        <p>Completed: {{ entry.completed_count }}</p>
+                        <p>Running: {{ entry.running_count }}</p>
+                        <p>Queued: {{ entry.queued_count }}</p>
+                        <p>Errors: {{ entry.error_count }}</p>
                     </div>
                 </div>
             </div>

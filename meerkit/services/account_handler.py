@@ -944,6 +944,7 @@ def request_followback_prediction(
     refresh: bool = False,
     force_background: bool = False,
     relationship_type: str | None = None,
+    prediction_session_id: str | None = None,
 ) -> dict:
     username, user_id = _normalize_prediction_target_input(username, user_id)
     if not username and not user_id:
@@ -1022,6 +1023,7 @@ def request_followback_prediction(
             reference_profile_id=instagram_user["instagram_user_id"],
             target_profile_id=target_profile_id,
             target_username=target_username,
+            prediction_session_id=prediction_session_id,
             probability=result["followback_probability"],
             confidence=result["confidence"],
             status="completed",
@@ -1050,6 +1052,7 @@ def request_followback_prediction(
         reference_profile_id=instagram_user["instagram_user_id"],
         target_profile_id=target_profile_id,
         target_username=target_username,
+        prediction_session_id=prediction_session_id,
         status="queued",
         requested_at=current_time,
         expires_at=expires_at,

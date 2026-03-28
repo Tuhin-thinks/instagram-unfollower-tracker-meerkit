@@ -58,6 +58,22 @@ export interface FollowBackPredictionResponse {
   task: PredictionTask | null
 }
 
+export interface PredictionHistorySession {
+  prediction_session_id: string
+  latest_prediction_id: string
+  prediction_type: string
+  latest_target_username: string | null
+  latest_target_profile_id: string | null
+  last_requested_at: string
+  status: PredictionStatus
+  prediction_count: number
+  completed_count: number
+  error_count: number
+  queued_count: number
+  running_count: number
+  cancelled_count: number
+}
+
 export interface PredictionDetailResponse {
   prediction: PredictionRecord
   task: PredictionTask | null

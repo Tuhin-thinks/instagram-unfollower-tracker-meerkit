@@ -52,12 +52,14 @@ def test_prediction_history_returns_persisted_rows(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "meerkit.routes.predict.db_service.list_predictions",
+        "meerkit.routes.predict.db_service.list_prediction_sessions",
         lambda **kwargs: [
             {
-                "prediction_id": "pred_123",
+                "prediction_session_id": "pred_session_123",
+                "latest_prediction_id": "pred_123",
                 "prediction_type": "follow_back",
                 "status": "completed",
+                "prediction_count": 12,
             }
         ],
     )
@@ -68,9 +70,11 @@ def test_prediction_history_returns_persisted_rows(monkeypatch):
     payload = response.get_json()
     assert payload == [
         {
-            "prediction_id": "pred_123",
+            "prediction_session_id": "pred_session_123",
+            "latest_prediction_id": "pred_123",
             "prediction_type": "follow_back",
             "status": "completed",
+            "prediction_count": 12,
         }
     ]
 

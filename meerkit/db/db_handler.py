@@ -6,6 +6,7 @@ from meerkit.config import SQLITE_CONNECTION_TIMEOUT
 from meerkit.db import schemas
 
 _AUTOMATION_ACTIONS_HEARTBEAT_COLUMN = "last_heartbeat_at"
+_PREDICTIONS_SESSION_COLUMN = "prediction_session_id"
 
 
 class SqliteDBHandler:
@@ -27,6 +28,7 @@ class SqliteDBHandler:
             for table_sql in schemas.schema_collection.values():
                 cursor.execute(table_sql)
             self._ensure_automation_action_columns(cursor)
+            self._ensure_prediction_columns(cursor)
             conn.commit()
 
     def _ensure_automation_action_columns(self, cursor: sqlite3.Cursor) -> None:
@@ -36,6 +38,20 @@ class SqliteDBHandler:
             cursor.execute(
                 "ALTER TABLE automation_actions ADD COLUMN last_heartbeat_at TEXT"
             )
+
+    def _ensure_prediction_columns(self, cursor: sqlite3.Cursor) -> None:
+        cursor.execute("PRAGMA table_info(predictions)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        if _PREDICTIONS_SESSION_COLUMN not in existing_columns:
+            cursor.execute(
+                "ALTER TABLE predictions ADD COLUMN prediction_session_id TEXT"
+            )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_predictions_session
+            ON predictions (app_user_id, reference_profile_id, prediction_session_id, requested_at)
+            """
+        )
 
     def __enter__(self):
         # Keep one connection per handler (and handler is thread-local in db_service).

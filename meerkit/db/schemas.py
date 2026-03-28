@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS target_profile_list_cache_entries (
 PREDICTIONS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS predictions (
     prediction_id TEXT PRIMARY KEY,
+    prediction_session_id TEXT,
     prediction_type TEXT NOT NULL,
     app_user_id TEXT NOT NULL,
     reference_profile_id TEXT NOT NULL,

@@ -29,6 +29,7 @@ def create_followback_prediction():
     refresh = bool(payload.get("refresh", False))
     force_background = bool(payload.get("force_background", False))
     relationship_type = (payload.get("relationship_type") or "").strip() or None
+    prediction_session_id = (payload.get("prediction_session_id") or "").strip() or None
 
     try:
         result = account_handler.request_followback_prediction(
@@ -39,6 +40,7 @@ def create_followback_prediction():
             refresh=refresh,
             force_background=force_background,
             relationship_type=relationship_type,
+            prediction_session_id=prediction_session_id,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -113,7 +115,7 @@ def prediction_history():
     target_profile_id = request.args.get("target_profile_id")
     limit = max(1, min(int(request.args.get("limit", 50)), 200))
     offset = max(0, int(request.args.get("offset", 0)))
-    predictions = db_service.list_predictions(
+    predictions = db_service.list_prediction_sessions(
         app_user_id=app_user_id,
         reference_profile_id=instagram_user["instagram_user_id"],
         target_profile_id=target_profile_id,

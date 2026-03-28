@@ -51,6 +51,44 @@ def test_sqlite_init_backfills_automation_heartbeat_column(tmp_path):
     assert "last_heartbeat_at" in columns
 
 
+def test_sqlite_init_backfills_prediction_session_column(tmp_path):
+    db_path = tmp_path / "legacy_predictions.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE predictions (
+                prediction_id TEXT PRIMARY KEY,
+                prediction_type TEXT NOT NULL,
+                app_user_id TEXT NOT NULL,
+                reference_profile_id TEXT NOT NULL,
+                target_profile_id TEXT NOT NULL,
+                target_username TEXT,
+                probability REAL,
+                confidence REAL,
+                status TEXT NOT NULL,
+                outcome_status TEXT NOT NULL DEFAULT 'pending',
+                result_payload_json TEXT,
+                feature_breakdown_json TEXT,
+                requested_at TEXT NOT NULL,
+                computed_at TEXT,
+                data_as_of TEXT,
+                expires_at TEXT,
+                task_id TEXT,
+                create_date TEXT NOT NULL,
+                update_date TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
+
+    SqliteDBHandler(db_path=db_path)
+
+    with sqlite3.connect(db_path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(predictions)")}
+
+    assert "prediction_session_id" in columns
+
+
 def test_update_automation_action_persists_last_heartbeat(monkeypatch, tmp_path):
     _use_temp_worker_db(monkeypatch, tmp_path)
 

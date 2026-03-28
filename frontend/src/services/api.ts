@@ -13,7 +13,7 @@ import type {
   PredictionAssessment,
   PredictionDetailResponse,
   PredictionFeedbackPayload,
-  PredictionRecord,
+  PredictionHistorySession,
   RelationshipCacheStatusResponse,
   PredictionTask,
   TaskListResponse,
@@ -122,6 +122,7 @@ export const createFollowBackPrediction = (payload: {
   user_id?: string
   refresh?: boolean
   force_background?: boolean
+  prediction_session_id?: string
 }) =>
   http
     .post<FollowBackPredictionResponse>('/predictions/follow-back', payload, {
@@ -135,7 +136,7 @@ export const getPredictionHistory = (params?: {
   offset?: number
 }) =>
   http
-    .get<PredictionRecord[]>('/predictions/history', {
+    .get<PredictionHistorySession[]>('/predictions/history', {
       params: {
         profile_id: activeInstagramUserId,
         ...(params || {}),

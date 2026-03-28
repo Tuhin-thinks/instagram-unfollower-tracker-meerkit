@@ -1119,6 +1119,7 @@ def create_prediction(
     target_profile_id: str,
     target_username: str | None,
     status: str,
+    prediction_session_id: str | None = None,
     probability: float | None = None,
     confidence: float | None = None,
     result_payload: dict | None = None,
@@ -1140,6 +1141,7 @@ def create_prediction(
             """
             INSERT INTO predictions (
                 prediction_id,
+                prediction_session_id,
                 prediction_type,
                 app_user_id,
                 reference_profile_id,
@@ -1158,10 +1160,11 @@ def create_prediction(
                 task_id,
                 create_date,
                 update_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 prediction_id,
+                prediction_session_id,
                 prediction_type,
                 app_user_id,
                 reference_profile_id,
@@ -1290,6 +1293,128 @@ def list_predictions(
             if normalized is not None:
                 results.append(normalized)
         return results
+
+
+def list_prediction_sessions(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[dict]:
+    """Return grouped history where each prediction session appears once."""
+    db = get_worker_db()
+    scoped_query = """
+        SELECT
+            prediction_id,
+            COALESCE(NULLIF(prediction_session_id, ''), prediction_id) AS session_key,
+            prediction_type,
+            target_username,
+            target_profile_id,
+            status,
+            requested_at
+        FROM predictions
+        WHERE app_user_id = ? AND reference_profile_id = ?
+    """
+    params: list[str | int] = [app_user_id, reference_profile_id]
+    if target_profile_id:
+        scoped_query += " AND target_profile_id = ?"
+        params.append(target_profile_id)
+
+    query = f"""
+        WITH scoped AS (
+            {scoped_query}
+        ),
+        ranked AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY session_key
+                    ORDER BY requested_at DESC, prediction_id DESC
+                ) AS rn_latest
+            FROM scoped
+        ),
+        session_stats AS (
+            SELECT
+                session_key,
+                COUNT(*) AS prediction_count,
+                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
+                SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued_count,
+                SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running_count,
+                SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled_count,
+                MAX(requested_at) AS last_requested_at
+            FROM ranked
+            GROUP BY session_key
+        )
+        SELECT
+            stats.session_key AS prediction_session_id,
+            latest.prediction_id AS latest_prediction_id,
+            latest.prediction_type,
+            latest.target_username AS latest_target_username,
+            latest.target_profile_id AS latest_target_profile_id,
+            stats.last_requested_at,
+            stats.prediction_count,
+            stats.completed_count,
+            stats.error_count,
+            stats.queued_count,
+            stats.running_count,
+            stats.cancelled_count
+        FROM session_stats stats
+        JOIN ranked latest
+            ON latest.session_key = stats.session_key
+           AND latest.rn_latest = 1
+        ORDER BY stats.last_requested_at DESC
+        LIMIT ? OFFSET ?
+    """
+
+    params.append(limit)
+    params.append(offset)
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+
+    sessions: list[dict] = []
+    for row in rows:
+        prediction_count = int(row["prediction_count"] or 0)
+        completed_count = int(row["completed_count"] or 0)
+        error_count = int(row["error_count"] or 0)
+        queued_count = int(row["queued_count"] or 0)
+        running_count = int(row["running_count"] or 0)
+        cancelled_count = int(row["cancelled_count"] or 0)
+
+        if running_count > 0:
+            session_status = "running"
+        elif queued_count > 0:
+            session_status = "queued"
+        elif error_count > 0 and completed_count == 0:
+            session_status = "error"
+        elif completed_count == prediction_count and prediction_count > 0:
+            session_status = "completed"
+        elif cancelled_count > 0 and completed_count == 0:
+            session_status = "cancelled"
+        else:
+            session_status = "completed"
+
+        sessions.append(
+            {
+                "prediction_session_id": row["prediction_session_id"],
+                "latest_prediction_id": row["latest_prediction_id"],
+                "prediction_type": row["prediction_type"],
+                "latest_target_username": row["latest_target_username"],
+                "latest_target_profile_id": row["latest_target_profile_id"],
+                "last_requested_at": row["last_requested_at"],
+                "status": session_status,
+                "prediction_count": prediction_count,
+                "completed_count": completed_count,
+                "error_count": error_count,
+                "queued_count": queued_count,
+                "running_count": running_count,
+                "cancelled_count": cancelled_count,
+            }
+        )
+    return sessions
 
 
 def get_latest_prediction_for_target(
