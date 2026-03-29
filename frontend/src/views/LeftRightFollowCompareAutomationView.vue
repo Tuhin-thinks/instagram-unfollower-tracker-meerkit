@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, RouterLink } from "vue-router";
 import {
     cancelAutomationAction,
     confirmAutomationAction,
@@ -380,6 +380,15 @@ onUnmounted(() => {
                 </p>
             </div>
         </header>
+
+        <!-- Brief rate-limit notice -->
+        <div class="flex flex-wrap items-center gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-4 py-2.5 text-xs text-amber-200/90">
+            <span aria-hidden="true">⚠️</span>
+            <span>Keep follow/unfollow under <strong>150–200 actions/day</strong> (new accounts: <strong>&lt;100</strong>). Spread gradually to avoid Instagram restrictions.</span>
+            <RouterLink to="/admin" class="ml-auto shrink-0 font-medium text-amber-300 hover:text-amber-100 underline underline-offset-2 transition-colors whitespace-nowrap">
+                Monitor API usage →
+            </RouterLink>
+        </div>
 
         <div class="grid xl:grid-cols-[1.25fr,0.75fr] gap-6">
             <section class="space-y-5">

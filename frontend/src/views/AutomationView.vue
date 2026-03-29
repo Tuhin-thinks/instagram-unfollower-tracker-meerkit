@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { RouterLink } from "vue-router";
+
 const props = defineProps<{
     profileId: string;
     profileUsername?: string | null;
@@ -106,6 +108,15 @@ function openCard(cardKey: string) {
                 </div>
             </div>
         </header>
+
+        <!-- Brief rate-limit notice -->
+        <div class="flex flex-wrap items-center gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-4 py-2.5 text-xs text-amber-200/90">
+            <span aria-hidden="true">⚠️</span>
+            <span>Keep follow/unfollow under <strong>150–200 actions/day</strong> (new accounts: <strong>&lt;100</strong>). Spread gradually to avoid Instagram restrictions.</span>
+            <RouterLink to="/admin" class="ml-auto shrink-0 font-medium text-amber-300 hover:text-amber-100 underline underline-offset-2 transition-colors whitespace-nowrap">
+                Monitor API usage →
+            </RouterLink>
+        </div>
 
         <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-5">
             <article

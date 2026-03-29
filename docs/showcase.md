@@ -84,6 +84,26 @@ Real UI screenshots from the project, grouped by workflow.
 
 ## 5) API Monitoring and Limits
 
+Meerkit tracks every Instagram API call it makes on your behalf and surfaces that data in the **Admin → Account Details → API Usage** tab. Keeping an eye on these numbers is the easiest way to avoid triggering Instagram's rate-limit and spam detection systems.
+
+!!! warning "⚠️ Instagram Rate Limit Warning"
+    **Do not bulk follow or unfollow users on Instagram.** Doing so can trigger Instagram's spam detection and may lead to account restrictions.
+
+    | Scenario | Safe daily limit |
+    |---|---|
+    | General / established accounts | 150 – 200 follow/unfollow actions |
+    | New accounts (first few weeks) | Stay under 100 actions |
+
+    - Spread your actions **gradually throughout the day** to avoid detection.
+    - If you exceed the limit, Instagram may:
+        - Temporarily block your actions (for hours or days)
+        - Limit your reach (**shadowban**)
+        - **Permanently disable** your account if abuse continues
+
+    > **Note:** These limits are not officially confirmed by Instagram — they are based on extensive community testing and experience with Instagram automation tools.
+
+    Use the **API Calls Count Dashboard** (shown below) to monitor your usage and stay within safe limits.
+
 ### API Calls Count Dashboard
 
 ![Insta API Calls Count Dashboard](images/meerkit-insta-api-calls-count-dashboard.png)

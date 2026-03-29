@@ -60,6 +60,9 @@ Configured in `frontend/src/router/index.ts`:
 - `LeftRightFollowCompareResultsView.vue`: matrix + graph result explorer.
 - `TasksView.vue`: unified live task board.
 
+!!! warning "⚠️ Instagram Rate Limits Apply"
+    Keep follow/unfollow actions under **150–200/day** (new accounts: **under 100/day**). Spread actions gradually throughout the day. [Monitor your API usage →](showcase.md#5-api-monitoring-and-limits)
+
 ## API Client
 
 `frontend/src/services/api.ts` includes endpoint wrappers for:

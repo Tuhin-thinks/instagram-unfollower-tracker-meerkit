@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { RouterLink } from "vue-router";
 import {
     cancelAutomationAction,
     confirmAutomationAction,
@@ -302,6 +303,39 @@ function goBack() {
                 </p>
             </div>
         </header>
+
+        <!-- ⚠️ Rate-limit warning -->
+        <div class="rounded-2xl border border-amber-400/40 bg-amber-400/10 p-5 shadow-lg shadow-amber-900/20">
+            <div class="flex items-start gap-3">
+                <span class="text-amber-300 text-xl leading-none mt-0.5 shrink-0" aria-hidden="true">⚠️</span>
+                <div class="space-y-2 min-w-0">
+                    <p class="text-sm font-semibold text-amber-200 leading-snug">
+                        Instagram Rate Limit Warning — Read Before You Proceed
+                    </p>
+                    <p class="text-xs text-amber-100/90 leading-relaxed">
+                        <strong>Do not bulk follow users on Instagram.</strong>
+                        Doing so can trigger Instagram's spam detection and may lead to account restrictions.
+                    </p>
+                    <ul class="text-xs text-amber-100/80 space-y-1 list-disc list-inside">
+                        <li><strong>Safe daily limit:</strong> 150 – 200 follow/unfollow actions (general accounts)</li>
+                        <li><strong>New accounts:</strong> Stay under 100 actions/day for the first few weeks</li>
+                        <li>Spread your actions <strong>gradually throughout the day</strong> to avoid detection</li>
+                    </ul>
+                    <p class="text-xs text-amber-100/80 leading-relaxed">
+                        Exceeding the limit may result in a temporary action block, a shadowban, or permanent account disable.
+                    </p>
+                    <p class="text-[11px] text-amber-200/60 italic">
+                        These limits are community-sourced and not officially confirmed by Instagram.
+                    </p>
+                    <RouterLink
+                        to="/admin"
+                        class="inline-flex items-center gap-1 text-xs font-medium text-amber-300 hover:text-amber-100 underline underline-offset-2 transition-colors"
+                    >
+                        📊 Monitor your API usage in Admin → Account Details → API Usage
+                    </RouterLink>
+                </div>
+            </div>
+        </div>
 
         <div class="grid xl:grid-cols-[1.15fr,0.85fr] gap-6">
             <section class="space-y-6">

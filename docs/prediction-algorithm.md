@@ -43,6 +43,9 @@ flowchart TD
 
 ## Data Sources Used By The Algorithm
 
+!!! warning "⚠️ Instagram Rate Limits Apply"
+    Keep follow/unfollow actions under **150–200/day** (new accounts: **under 100/day**). Spread actions gradually throughout the day. [Monitor your API usage →](showcase.md#5-api-monitoring-and-limits)
+
 ### 1. Target profile facts
 
 These are the direct account-level signals used by the model:

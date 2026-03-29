@@ -74,8 +74,12 @@ markdown_extensions:
       custom_checkbox: true
 
 extra_javascript:
+  - javascripts/disclaimer.js
   - javascripts/mathjax.js
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - stylesheets/disclaimer.css
 
 nav:
   - Home: index.md

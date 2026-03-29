@@ -37,12 +37,29 @@ Unlike typical Instagram unfollower tools, Meerkit is built for **analysis + aut
 
 ---
 
-## ⚠️ Important Note
+## ⚠️ Important Warning — Instagram Rate Limits
 
-Meerkit is intended for controlled usage and experimentation.
+> **Do not bulk follow or unfollow users on Instagram.** Doing so can trigger Instagram's spam detection and may lead to account restrictions.
 
-- Use responsibly to avoid platform restrictions  
-- Automation features are optional and configurable  
+| Scenario | Safe daily limit |
+|---|---|
+| General / established accounts | 150 – 200 follow/unfollow actions |
+| New accounts (first few weeks) | Stay under 100 actions |
+
+- Spread your actions **gradually throughout the day** to avoid detection.
+- If you exceed the limit, Instagram may:
+  - Temporarily block your actions (for hours or days)
+  - Limit your reach (**shadowban**)
+  - **Permanently disable** your account if abuse continues
+
+> **Note:** These limits are not officially confirmed by Instagram — they are based on extensive community testing and experience with Instagram automation tools.
+
+Meerkit provides a built-in **Admin → Account Details → API Usage** tab where you can monitor your live Instagram API call count. See the [API Monitoring section in the Visual Tour](docs/showcase.md#5-api-monitoring-and-limits) for a full walkthrough.
+
+Additionally:
+
+- Use responsibly to avoid platform restrictions
+- Automation features are optional and configurable
 - Runs locally on your system (no third-party service dependency)
 
 ---

@@ -106,6 +106,24 @@ You should see the login page. Create an account or log in to get started!
 
 ## First Scan
 
+!!! warning "⚠️ Instagram Rate Limit Warning"
+    **Do not bulk follow or unfollow users on Instagram.** Doing so can trigger Instagram's spam detection and may lead to account restrictions.
+
+    | Scenario | Safe daily limit |
+    |---|---|
+    | General / established accounts | 150 – 200 follow/unfollow actions |
+    | New accounts (first few weeks) | Stay under 100 actions |
+
+    - Spread your actions **gradually throughout the day** to avoid detection.
+    - If you exceed the limit, Instagram may:
+        - Temporarily block your actions (for hours or days)
+        - Limit your reach (**shadowban**)
+        - **Permanently disable** your account if abuse continues
+
+    > **Note:** These limits are not officially confirmed by Instagram — they are based on extensive community testing and experience with Instagram automation tools.
+
+    Monitor your live Instagram API call count in the in-app **Admin → Account Details → API Usage** tab. See also: [API Monitoring and Limits](showcase.md#5-api-monitoring-and-limits).
+
 1. **Create/Login to Account** – Use any username/password
 2. **Add Instagram Account** – Click "Create Instagram Account" and paste your session credentials
 3. **Run a Scan** – Click "Scan Now" to fetch your current followers

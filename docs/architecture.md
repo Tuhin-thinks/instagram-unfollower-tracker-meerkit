@@ -42,6 +42,9 @@ Flask app (meerkit/app.py)
 
 ## Core Data Flows
 
+!!! warning "⚠️ Instagram Rate Limits Apply"
+    Keep follow/unfollow actions under **150–200/day** (new accounts: **under 100/day**). Spread actions gradually throughout the day. [Monitor your API usage →](showcase.md#5-api-monitoring-and-limits)
+
 ### 1) Scan Flow
 
 1. Frontend calls `POST /api/scan`.

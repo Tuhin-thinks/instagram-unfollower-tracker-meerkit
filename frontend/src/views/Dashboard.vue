@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
+import { RouterLink } from "vue-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/vue-query";
 import FollowerCard from "../components/FollowerCard.vue";
 import SkeletonCard from "../components/SkeletonCard.vue";
@@ -221,6 +222,15 @@ function handleLinkedAccountsSaved() {
         <div v-if="scanError409" class="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm text-amber-400">
             A scan is already in progress — please wait for it to finish.
         </div>
+    </div>
+
+    <!-- Brief rate-limit notice -->
+    <div class="flex flex-wrap items-center gap-2.5 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] px-4 py-2.5 text-xs text-amber-200/90 mb-6">
+        <span aria-hidden="true">⚠️</span>
+        <span>Keep follow/unfollow under <strong>150–200 actions/day</strong> (new accounts: <strong>&lt;100</strong>). Spread gradually to avoid Instagram restrictions.</span>
+        <RouterLink to="/admin" class="ml-auto shrink-0 font-medium text-amber-300 hover:text-amber-100 underline underline-offset-2 transition-colors whitespace-nowrap">
+            Monitor API usage →
+        </RouterLink>
     </div>
 
     <div class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6 mb-6">

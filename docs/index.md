@@ -10,6 +10,24 @@ Meerkit is your follower intel dashboard: scan, compare, predict, and act.
 - Multi-account and credential management
 - Follow-back predictions + batch workflows
 
+!!! warning "⚠️ Instagram Rate Limit Warning"
+    **Do not bulk follow or unfollow users on Instagram.** Doing so can trigger Instagram's spam detection and may lead to account restrictions.
+
+    | Scenario | Safe daily limit |
+    |---|---|
+    | General / established accounts | 150 – 200 follow/unfollow actions |
+    | New accounts (first few weeks) | Stay under 100 actions |
+
+    - Spread your actions **gradually throughout the day** to avoid detection.
+    - If you exceed the limit, Instagram may:
+        - Temporarily block your actions (for hours or days)
+        - Limit your reach (**shadowban**)
+        - **Permanently disable** your account if abuse continues
+
+    > **Note:** These limits are not officially confirmed by Instagram — they are based on extensive community testing and experience with Instagram automation tools.
+
+    Monitor your Instagram API call count in the **Admin → Account Details → API Usage** tab. See also: [API Monitoring and Limits](showcase.md#5-api-monitoring-and-limits).
+
 ## Quick Look
 
 | Dashboard | Discovery |

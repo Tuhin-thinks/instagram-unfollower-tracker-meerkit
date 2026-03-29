@@ -2,6 +2,9 @@
 
 This document lists the currently implemented HTTP API in the Flask backend.
 
+!!! warning "⚠️ Instagram Rate Limits Apply"
+    Keep follow/unfollow actions under **150–200/day** (new accounts: **under 100/day**). Spread actions gradually throughout the day. [Monitor your API usage →](showcase.md#5-api-monitoring-and-limits)
+
 ## Base URL
 
 - Development: `http://localhost:5000/api`
@@ -293,6 +296,24 @@ Unified live task list combining:
 Cancelled tasks are retained briefly for UI visibility.
 
 ## Automation Endpoints (`/api/automation`)
+
+!!! warning "⚠️ Instagram Rate Limit Warning"
+    **Do not bulk follow or unfollow users on Instagram.** Doing so can trigger Instagram's spam detection and may lead to account restrictions.
+
+    | Scenario | Safe daily limit |
+    |---|---|
+    | General / established accounts | 150 – 200 follow/unfollow actions |
+    | New accounts (first few weeks) | Stay under 100 actions |
+
+    - Spread your actions **gradually throughout the day** to avoid detection.
+    - If you exceed the limit, Instagram may:
+        - Temporarily block your actions (for hours or days)
+        - Limit your reach (**shadowban**)
+        - **Permanently disable** your account if abuse continues
+
+    > **Note:** These limits are not officially confirmed by Instagram — they are based on extensive community testing and experience with Instagram automation tools.
+
+    Use [`GET /auth/instagram-api-usage`](#get-authinstagram-api-usage) to monitor your live API call counts, or check the **Admin → Account Details → API Usage** tab in the UI. See also: [API Monitoring and Limits](showcase.md#5-api-monitoring-and-limits).
 
 ### GET `/automation/cache-efficiency`
 Get read-cache hit/call efficiency summary per category.
