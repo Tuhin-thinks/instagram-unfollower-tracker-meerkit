@@ -70,16 +70,27 @@ export interface InstagramApiUsageCallerSummary {
 
 export interface InstagramApiUsageCategorySummary {
   category: string
+  label: string
+  /** Real Instagram API requests (cache hits excluded) */
   all_time_count: number
   last_24h_count: number
+  cache_hits_all_time: number
+  cache_hits_last_24h: number
+  /** Percentage of reads served from cache (all-time) */
+  cache_efficiency_pct: number
+  /** Percentage of reads served from cache (last 24 h) */
+  cache_efficiency_24h_pct: number
   callers: InstagramApiUsageCallerSummary[]
 }
 
 export interface InstagramApiUsageAccountSummary {
   instagram_user_id: string
   account_name?: string | null
+  /** Real Instagram API requests (cache hits excluded) */
   all_time_count: number
   last_24h_count: number
+  cache_hits_all_time: number
+  cache_hits_last_24h: number
   categories: InstagramApiUsageCategorySummary[]
 }
 
@@ -87,8 +98,11 @@ export interface InstagramApiUsageSummaryResponse {
   generated_at: string
   window_start_24h: string
   totals: {
+    /** Real Instagram API requests (cache hits excluded) */
     all_time_count: number
     last_24h_count: number
+    cache_hits_all_time: number
+    cache_hits_last_24h: number
   }
   accounts: InstagramApiUsageAccountSummary[]
 }

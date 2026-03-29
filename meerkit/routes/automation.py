@@ -100,15 +100,11 @@ def _cache_efficiency_payload(app_user_id: str, reference_profile_id: str) -> di
     )
 
     categories = usage_summary.get("accounts", [{}])[0].get("categories", [])
-    counts_by_category: dict[str, dict[str, int]] = {}
-    for category_entry in categories:
-        category_name = str(category_entry.get("category") or "")
-        all_time_count = int(category_entry.get("all_time_count") or 0)
-        last_24h_count = int(category_entry.get("last_24h_count") or 0)
-        counts_by_category[category_name] = {
-            "all_time_count": all_time_count,
-            "last_24h_count": last_24h_count,
-        }
+
+    # Each category now has pre-separated api call and cache hit counts
+    counts_by_base_category: dict[str, dict] = {
+        str(cat.get("category") or ""): cat for cat in categories
+    }
 
     per_category: list[dict[str, object]] = []
     all_time_hits_total = 0
@@ -117,13 +113,12 @@ def _cache_efficiency_payload(app_user_id: str, reference_profile_id: str) -> di
     last_24h_api_total = 0
 
     for category in sorted(_READ_USAGE_CATEGORIES):
-        api_counts = counts_by_category.get(category, {})
-        hit_counts = counts_by_category.get(f"{category}_cache_hit", {})
+        cat_entry = counts_by_base_category.get(category, {})
 
-        api_all_time = int(api_counts.get("all_time_count") or 0)
-        api_last_24h = int(api_counts.get("last_24h_count") or 0)
-        hit_all_time = int(hit_counts.get("all_time_count") or 0)
-        hit_last_24h = int(hit_counts.get("last_24h_count") or 0)
+        api_all_time = int(cat_entry.get("all_time_count") or 0)
+        api_last_24h = int(cat_entry.get("last_24h_count") or 0)
+        hit_all_time = int(cat_entry.get("cache_hits_all_time") or 0)
+        hit_last_24h = int(cat_entry.get("cache_hits_last_24h") or 0)
 
         all_time_reads = api_all_time + hit_all_time
         last_24h_reads = api_last_24h + hit_last_24h

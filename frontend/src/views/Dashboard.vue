@@ -237,14 +237,15 @@ function handleLinkedAccountsSaved() {
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
                 <p class="text-xs text-slate-500 uppercase tracking-wide font-medium mb-0.5">
-                    Instagram API usage (active account)
+                    Instagram API Calls
                 </p>
                 <p class="text-base font-semibold text-slate-100">
-                    {{ (activeAccountUsage?.all_time_count ?? 0).toLocaleString() }} calls total
+                    {{ (activeAccountUsage?.all_time_count ?? 0).toLocaleString() }} real calls total
                 </p>
                 <p class="text-sm text-slate-400 mt-1">
-                    {{ (activeAccountUsage?.last_24h_count ?? 0).toLocaleString() }} calls in last 24h
+                    {{ (activeAccountUsage?.last_24h_count ?? 0).toLocaleString() }} in last 24h
                 </p>
+                <p class="text-xs text-slate-600 mt-1">Actual Instagram requests — cache hits excluded</p>
             </div>
             <p class="text-xs text-slate-500" v-if="apiUsageSummary?.generated_at">
                 Updated {{ formatDate(apiUsageSummary.generated_at) }}
@@ -257,9 +258,16 @@ function handleLinkedAccountsSaved() {
                 :key="category.category"
                 class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2"
             >
-                <p class="text-xs uppercase tracking-wide text-slate-500">{{ category.category }}</p>
-                <p class="text-sm font-semibold text-slate-200 mt-0.5">
-                    {{ category.all_time_count.toLocaleString() }} total
+                <div class="flex items-center justify-between gap-1.5 mb-0.5">
+                    <p class="text-xs uppercase tracking-wide text-slate-500 truncate">{{ category.label || category.category }}</p>
+                    <span
+                        v-if="category.cache_efficiency_pct > 0"
+                        class="shrink-0 text-[10px] font-semibold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded-full"
+                        title="% of reads served from cache"
+                    >{{ category.cache_efficiency_pct }}% cached</span>
+                </div>
+                <p class="text-sm font-semibold text-slate-200">
+                    {{ category.all_time_count.toLocaleString() }} calls
                 </p>
                 <p class="text-xs text-slate-500">{{ category.last_24h_count.toLocaleString() }} in 24h</p>
             </div>

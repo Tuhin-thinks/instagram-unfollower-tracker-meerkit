@@ -36,23 +36,29 @@ def test_cache_efficiency_returns_metrics(monkeypatch):
         lambda **kwargs: {
             "generated_at": "2026-03-22T10:00:00",
             "window_start_24h": "2026-03-21T10:00:00",
-            "totals": {"all_time_count": 10, "last_24h_count": 4},
+            "totals": {
+                "all_time_count": 3,
+                "last_24h_count": 1,
+                "cache_hits_all_time": 5,
+                "cache_hits_last_24h": 2,
+            },
             "accounts": [
                 {
                     "instagram_user_id": "ig_1",
-                    "all_time_count": 10,
-                    "last_24h_count": 4,
+                    "all_time_count": 3,
+                    "last_24h_count": 1,
+                    "cache_hits_all_time": 5,
+                    "cache_hits_last_24h": 2,
                     "categories": [
                         {
                             "category": "followers_discovery",
+                            "label": "Followers Discovery",
                             "all_time_count": 3,
                             "last_24h_count": 1,
-                            "callers": [],
-                        },
-                        {
-                            "category": "followers_discovery_cache_hit",
-                            "all_time_count": 5,
-                            "last_24h_count": 2,
+                            "cache_hits_all_time": 5,
+                            "cache_hits_last_24h": 2,
+                            "cache_efficiency_pct": 62.5,
+                            "cache_efficiency_24h_pct": 66.7,
                             "callers": [],
                         },
                     ],

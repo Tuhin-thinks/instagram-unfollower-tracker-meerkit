@@ -838,24 +838,37 @@ const discoveryUsername = computed(() => {
 
                     <!-- API Usage section -->
                     <section v-if="detailsTab === 'api_usage'" class="mt-6 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]">
-                        <h3 class="text-sm font-semibold text-slate-200">Instagram API Usage</h3>
-                        <p class="text-xs text-slate-500 mt-1">Grouped by category and caller for this account.</p>
+                        <h3 class="text-sm font-semibold text-slate-200">Instagram API Calls</h3>
+                        <p class="text-xs text-slate-500 mt-1">Actual requests sent to Instagram per action category — cache hits are shown separately below each category.</p>
 
                         <p v-if="apiUsageLoading" class="text-sm text-slate-400 mt-3">Loading usage metrics…</p>
                         <p v-else-if="apiUsageError" class="text-sm text-rose-400 mt-3">{{ apiUsageError }}</p>
 
                         <div v-else-if="selectedApiUsage" class="mt-4">
-                            <div class="grid grid-cols-2 gap-3 mb-4">
+                            <!-- Top-level totals: API calls + cache hits side by side -->
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
                                 <div class="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
-                                    <p class="text-xs text-slate-500 uppercase tracking-wide">All time</p>
+                                    <p class="text-xs text-slate-500 uppercase tracking-wide">API calls (all time)</p>
                                     <p class="text-sm font-semibold text-slate-100 mt-0.5">
-                                        {{ selectedApiUsage.all_time_count.toLocaleString() }} calls
+                                        {{ selectedApiUsage.all_time_count.toLocaleString() }}
                                     </p>
                                 </div>
                                 <div class="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
-                                    <p class="text-xs text-slate-500 uppercase tracking-wide">Last 24h</p>
+                                    <p class="text-xs text-slate-500 uppercase tracking-wide">API calls (24h)</p>
                                     <p class="text-sm font-semibold text-slate-100 mt-0.5">
-                                        {{ selectedApiUsage.last_24h_count.toLocaleString() }} calls
+                                        {{ selectedApiUsage.last_24h_count.toLocaleString() }}
+                                    </p>
+                                </div>
+                                <div class="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/[0.12] px-3 py-2.5">
+                                    <p class="text-xs text-emerald-500/70 uppercase tracking-wide">Cache hits (all time)</p>
+                                    <p class="text-sm font-semibold text-emerald-400 mt-0.5">
+                                        {{ (selectedApiUsage.cache_hits_all_time ?? 0).toLocaleString() }}
+                                    </p>
+                                </div>
+                                <div class="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/[0.12] px-3 py-2.5">
+                                    <p class="text-xs text-emerald-500/70 uppercase tracking-wide">Cache hits (24h)</p>
+                                    <p class="text-sm font-semibold text-emerald-400 mt-0.5">
+                                        {{ (selectedApiUsage.cache_hits_last_24h ?? 0).toLocaleString() }}
                                     </p>
                                 </div>
                             </div>
@@ -866,13 +879,30 @@ const discoveryUsername = computed(() => {
                                     :key="category.category"
                                     class="rounded-xl border border-white/[0.06] p-3 bg-white/[0.02]"
                                 >
-                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                                        <p class="text-sm font-semibold text-slate-200">{{ category.category }}</p>
-                                        <p class="text-xs text-slate-500">
-                                            {{ category.all_time_count.toLocaleString() }} total · {{ category.last_24h_count.toLocaleString() }} in 24h
-                                        </p>
+                                    <!-- Category header with label + cache efficiency badge -->
+                                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                                        <p class="text-sm font-semibold text-slate-200">{{ category.label || category.category }}</p>
+                                        <span
+                                            v-if="category.cache_efficiency_pct > 0"
+                                            class="text-[10px] font-semibold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-1.5 py-0.5 rounded-full"
+                                            title="All-time % of reads served from cache"
+                                        >{{ category.cache_efficiency_pct }}% cached</span>
                                     </div>
-                                    <div class="mt-1.5 space-y-1" v-if="category.callers.length">
+                                    <!-- Two-column: API calls vs cache hits -->
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div class="rounded-lg bg-white/[0.02] border border-white/[0.05] px-2.5 py-1.5">
+                                            <p class="text-[10px] text-slate-500 uppercase tracking-wide mb-0.5">Real API calls</p>
+                                            <p class="text-xs font-semibold text-slate-200">{{ category.all_time_count.toLocaleString() }} total</p>
+                                            <p class="text-[10px] text-slate-500">{{ category.last_24h_count.toLocaleString() }} in 24h</p>
+                                        </div>
+                                        <div class="rounded-lg bg-emerald-500/[0.04] border border-emerald-500/[0.10] px-2.5 py-1.5">
+                                            <p class="text-[10px] text-emerald-500/60 uppercase tracking-wide mb-0.5">Cache hits</p>
+                                            <p class="text-xs font-semibold text-emerald-400">{{ (category.cache_hits_all_time ?? 0).toLocaleString() }} total</p>
+                                            <p class="text-[10px] text-emerald-500/60">{{ (category.cache_hits_last_24h ?? 0).toLocaleString() }} in 24h</p>
+                                        </div>
+                                    </div>
+                                    <!-- Caller breakdown (real API calls only) -->
+                                    <div class="mt-1 space-y-1" v-if="category.callers.length">
                                         <p
                                             v-for="caller in category.callers"
                                             :key="`${caller.caller_service}:${caller.caller_method}`"

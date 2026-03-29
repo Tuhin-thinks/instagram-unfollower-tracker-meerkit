@@ -1907,6 +1907,18 @@ def create_instagram_api_usage_event(
     }
 
 
+_CATEGORY_LABELS: dict[str, str] = {
+    "user_lookup": "User Lookup",
+    "user_data_fetch": "Profile Fetch",
+    "followers_discovery": "Followers Discovery",
+    "following_discovery": "Following Discovery",
+}
+
+
+def _category_label(category: str) -> str:
+    return _CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+
+
 def get_instagram_api_usage_summary(
     app_user_id: str,
     instagram_user_id: str | None = None,
@@ -1953,19 +1965,29 @@ def get_instagram_api_usage_summary(
         rows = [dict(row) for row in cursor.fetchall()]
 
     accounts_map: dict[str, dict] = {}
-    total_all_time = 0
-    total_last_24h = 0
+    total_api_all_time = 0
+    total_api_last_24h = 0
+    total_cache_all_time = 0
+    total_cache_last_24h = 0
 
     for row in rows:
         account_id = row["instagram_user_id"]
-        category = row["category"]
+        raw_category = row["category"]
+        is_cache_hit = raw_category.endswith("_cache_hit")
+        base_category = (
+            raw_category[: -len("_cache_hit")] if is_cache_hit else raw_category
+        )
         caller_service = row["caller_service"]
         caller_method = row["caller_method"]
-        all_time_count = int(row.get("all_time_count") or 0)
-        last_24h_count = int(row.get("last_24h_count") or 0)
+        row_all_time = int(row.get("all_time_count") or 0)
+        row_last_24h = int(row.get("last_24h_count") or 0)
 
-        total_all_time += all_time_count
-        total_last_24h += last_24h_count
+        if is_cache_hit:
+            total_cache_all_time += row_all_time
+            total_cache_last_24h += row_last_24h
+        else:
+            total_api_all_time += row_all_time
+            total_api_last_24h += row_last_24h
 
         account_payload = accounts_map.setdefault(
             account_id,
@@ -1973,36 +1995,64 @@ def get_instagram_api_usage_summary(
                 "instagram_user_id": account_id,
                 "all_time_count": 0,
                 "last_24h_count": 0,
+                "cache_hits_all_time": 0,
+                "cache_hits_last_24h": 0,
                 "categories": {},
             },
         )
-        account_payload["all_time_count"] += all_time_count
-        account_payload["last_24h_count"] += last_24h_count
+        if is_cache_hit:
+            account_payload["cache_hits_all_time"] += row_all_time
+            account_payload["cache_hits_last_24h"] += row_last_24h
+        else:
+            account_payload["all_time_count"] += row_all_time
+            account_payload["last_24h_count"] += row_last_24h
 
         category_payload = account_payload["categories"].setdefault(
-            category,
+            base_category,
             {
-                "category": category,
+                "category": base_category,
+                "label": _category_label(base_category),
                 "all_time_count": 0,
                 "last_24h_count": 0,
+                "cache_hits_all_time": 0,
+                "cache_hits_last_24h": 0,
                 "callers": [],
             },
         )
-        category_payload["all_time_count"] += all_time_count
-        category_payload["last_24h_count"] += last_24h_count
-        category_payload["callers"].append(
-            {
-                "caller_service": caller_service,
-                "caller_method": caller_method,
-                "all_time_count": all_time_count,
-                "last_24h_count": last_24h_count,
-            }
-        )
+        if is_cache_hit:
+            category_payload["cache_hits_all_time"] += row_all_time
+            category_payload["cache_hits_last_24h"] += row_last_24h
+        else:
+            category_payload["all_time_count"] += row_all_time
+            category_payload["last_24h_count"] += row_last_24h
+            category_payload["callers"].append(
+                {
+                    "caller_service": caller_service,
+                    "caller_method": caller_method,
+                    "all_time_count": row_all_time,
+                    "last_24h_count": row_last_24h,
+                }
+            )
 
     accounts: list[dict] = []
     for account_payload in accounts_map.values():
-        categories = sorted(
-            account_payload["categories"].values(),
+        categories_list = []
+        for cat in account_payload["categories"].values():
+            total_reads = cat["all_time_count"] + cat["cache_hits_all_time"]
+            total_reads_24h = cat["last_24h_count"] + cat["cache_hits_last_24h"]
+            cat["cache_efficiency_pct"] = (
+                round(cat["cache_hits_all_time"] / total_reads * 100, 1)
+                if total_reads > 0
+                else 0.0
+            )
+            cat["cache_efficiency_24h_pct"] = (
+                round(cat["cache_hits_last_24h"] / total_reads_24h * 100, 1)
+                if total_reads_24h > 0
+                else 0.0
+            )
+            categories_list.append(cat)
+        categories_sorted = sorted(
+            categories_list,
             key=lambda item: (item["all_time_count"], item["category"]),
             reverse=True,
         )
@@ -2011,7 +2061,9 @@ def get_instagram_api_usage_summary(
                 "instagram_user_id": account_payload["instagram_user_id"],
                 "all_time_count": account_payload["all_time_count"],
                 "last_24h_count": account_payload["last_24h_count"],
-                "categories": categories,
+                "cache_hits_all_time": account_payload["cache_hits_all_time"],
+                "cache_hits_last_24h": account_payload["cache_hits_last_24h"],
+                "categories": categories_sorted,
             }
         )
 
@@ -2021,8 +2073,10 @@ def get_instagram_api_usage_summary(
         "generated_at": _now_iso(),
         "window_start_24h": cutoff_24h,
         "totals": {
-            "all_time_count": total_all_time,
-            "last_24h_count": total_last_24h,
+            "all_time_count": total_api_all_time,
+            "last_24h_count": total_api_last_24h,
+            "cache_hits_all_time": total_cache_all_time,
+            "cache_hits_last_24h": total_cache_last_24h,
         },
         "accounts": accounts,
     }
