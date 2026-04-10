@@ -22,6 +22,16 @@ _follow_doc_id = "9740159112729312"
 _follow_lsd = "vfndR6YI1o9Mb1SorLFoGO"
 
 
+class RelationshipFetchError(Exception):
+    """Raised when the Instagram API response cannot be parsed for a relationship edge."""
+
+    def __init__(self, edge_name: str, reason: str) -> None:
+        label = "followers" if "followed_by" in edge_name else "following"
+        super().__init__(f"Could not fetch {label}: {reason}")
+        self.edge_name = edge_name
+        self.label = label
+
+
 @dataclass(frozen=True)
 class InstagramProfile:
     """Holds the credential context for one Instagram account/session."""
@@ -528,7 +538,17 @@ def _get_relationship_records_v2(
                 break
 
             data = response.json()
-            edge = data["data"]["user"][edge_name]
+            try:
+                edge = data["data"]["user"][edge_name]
+                if edge is None:
+                    raise RelationshipFetchError(
+                        edge_name,
+                        "API returned null for edge (user may be deactivated or private)",
+                    )
+            except (KeyError, TypeError) as exc:
+                raise RelationshipFetchError(
+                    edge_name, f"unexpected response structure: {exc}"
+                ) from exc
 
             for item in edge["edges"]:
                 node = item["node"]
