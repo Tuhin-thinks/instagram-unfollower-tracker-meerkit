@@ -25,6 +25,14 @@ from meerkit.services.account_handler import (
     _build_profile,
     _extract_username_from_target_input,
 )
+from meerkit.services.exceptions import (
+    ActionNotFoundError,
+    ActionOwnershipError,
+    InvalidActionStateError,
+    InvalidListTypeError,
+    InvalidPredictionInputError,
+    InvalidPrimaryAccountError,
+)
 from meerkit.services.instagram_gateway import instagram_gateway
 
 _USER_ID_RE = _re.compile(r"^\d+$")
@@ -102,7 +110,10 @@ def sync_safelist(
     """Replace the safelist for (app_user_id, reference_profile_id, list_type) with
     the supplied entries. Returns counts: added, skipped_invalid, total."""
     if list_type not in {"do_not_follow", "never_unfollow"}:
-        raise ValueError("list_type must be do_not_follow or never_unfollow")
+        raise InvalidListTypeError(
+            "list_type must be do_not_follow or never_unfollow",
+            list_type=list_type,
+        )
 
     normalized = bulk_normalize_entries(raw_lines)
     added = 0
@@ -139,7 +150,10 @@ def add_safelist_entries(
 ) -> dict:
     """Append entries to a safelist without removing existing ones."""
     if list_type not in {"do_not_follow", "never_unfollow"}:
-        raise ValueError("list_type must be do_not_follow or never_unfollow")
+        raise InvalidListTypeError(
+            "list_type must be do_not_follow or never_unfollow",
+            list_type=list_type,
+        )
 
     normalized = bulk_normalize_entries(raw_lines)
     added = 0
@@ -282,7 +296,10 @@ def add_alt_account_links(
         primary_raw_input
     )
     if not primary_identity_key:
-        raise ValueError("primary_account is invalid")
+        raise InvalidPrimaryAccountError(
+            "primary_account is invalid",
+            primary_raw_input=primary_raw_input,
+        )
 
     if instagram_user and primary_username and not primary_user_id:
         resolved_primary = _resolve_identity_to_user_id(
@@ -793,7 +810,12 @@ def prepare_left_right_compare(
     max_right_count = int(config.get("max_right_count") or 500)
 
     if max_left_count < 1 or max_right_count < 1:
-        raise ValueError("max_left_count and max_right_count must be >= 1")
+        raise InvalidPredictionInputError(
+            "max_left_count and max_right_count must be >= 1",
+            error_code="invalid_compare_limits",
+            max_left_count=max_left_count,
+            max_right_count=max_right_count,
+        )
 
     left_candidates = bulk_normalize_entries(left_lines)
     right_candidates = bulk_normalize_entries(right_lines)
@@ -822,9 +844,15 @@ def prepare_left_right_compare(
         right_selected.append(entry)
 
     if not left_selected:
-        raise ValueError("No valid left-side targets were provided")
+        raise InvalidPredictionInputError(
+            "No valid left-side targets were provided",
+            error_code="left_targets_required",
+        )
     if not right_selected:
-        raise ValueError("No valid right-side targets were provided")
+        raise InvalidPredictionInputError(
+            "No valid right-side targets were provided",
+            error_code="right_targets_required",
+        )
 
     if instagram_user:
         for entry in right_selected:
@@ -969,12 +997,23 @@ def confirm_action(
     """
     action = db_service.get_automation_action(action_id)
     if not action:
-        raise ValueError(f"Action {action_id} not found")
+        raise ActionNotFoundError(
+            f"Action {action_id} not found",
+            action_id=action_id,
+        )
     if action["app_user_id"] != app_user_id:
-        raise ValueError("Action does not belong to the active user")
+        raise ActionOwnershipError(
+            "Action does not belong to the active user",
+            action_id=action_id,
+            app_user_id=app_user_id,
+            action_owner_id=action.get("app_user_id"),
+        )
     if action["status"] != "staged":
-        raise ValueError(
+        raise InvalidActionStateError(
             f"Action {action_id} is not in staged state (status={action['status']})"
+            ,
+            action_id=action_id,
+            status=action.get("status"),
         )
 
     db_service.update_automation_action(

@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 from meerkit.config import CACHE_DIR
+from meerkit.services.exceptions import InvalidRelationshipTypeError
 
 RELATIONSHIP_CACHE_ROOT = CACHE_DIR
 VALID_RELATIONSHIP_TYPES = {"followers", "following"}
@@ -26,7 +27,10 @@ def build_cache_file_path(
     fetched_at: str,
 ) -> Path:
     if relationship_type not in VALID_RELATIONSHIP_TYPES:
-        raise ValueError(f"Unsupported relationship type: {relationship_type}")
+        raise InvalidRelationshipTypeError(
+            f"Unsupported relationship type: {relationship_type}",
+            relationship_type=relationship_type,
+        )
 
     try:
         parsed = datetime.fromisoformat(fetched_at)

@@ -5,6 +5,10 @@ import requests
 from meerkit.config import IMAGE_CACHE_DIR, IMAGE_DOWNLOAD_REQUEST_TIMEOUT
 from meerkit.extensions import image_download_queue
 from meerkit.services import db_service
+from meerkit.services.exceptions import (
+    ImageDownloadRequestError,
+    InvalidImageContentError,
+)
 from meerkit.services.instagram_api_usage import instagram_api_usage_tracker
 
 
@@ -20,29 +24,54 @@ def process_img_download(
     if cached_url == profile_pic_url and img_path.exists():
         return str(img_path)
 
-    response = instagram_api_usage_tracker.track_call(
-        app_user_id=app_user_id,
-        instagram_user_id=instagram_user_id,
-        category="img_download",
-        caller_service="downloader",
-        caller_method="process_img_download",
-        execute=lambda: requests.get(
-            profile_pic_url, timeout=IMAGE_DOWNLOAD_REQUEST_TIMEOUT
-        ),
-    )
-    response.raise_for_status()
+    try:
+        response = instagram_api_usage_tracker.track_call(
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            category="img_download",
+            caller_service="downloader",
+            caller_method="process_img_download",
+            execute=lambda: requests.get(
+                profile_pic_url, timeout=IMAGE_DOWNLOAD_REQUEST_TIMEOUT
+            ),
+        )
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        raise ImageDownloadRequestError(
+            "Failed to download profile image",
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            profile_pk_id=profile_pk_id,
+            profile_pic_url=profile_pic_url,
+        ) from exc
     # store in cache directory with filename as pk_id.jpg
     content_type = response.headers.get("Content-Type", "")
     if not content_type.startswith("image/"):
-        raise ValueError(
+        raise InvalidImageContentError(
             f"[Download worker] URL did not point to an image. Content-Type: {content_type};\n"
             "Failed download profile image for"
             f"\tImage URL: {profile_pic_url}\n"
             f"\tProfile PK ID: {profile_pk_id}\n"
+            ,
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            profile_pk_id=profile_pk_id,
+            profile_pic_url=profile_pic_url,
+            content_type=content_type,
         )
-    with open(img_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=8192):
-            f.write(chunk)
+    try:
+        with open(img_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+    except OSError as exc:
+        raise ImageDownloadRequestError(
+            "Failed to cache downloaded profile image",
+            error_code="image_cache_write_failed",
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            profile_pk_id=profile_pk_id,
+            cache_path=str(img_path),
+        ) from exc
 
     return str(img_path)
 

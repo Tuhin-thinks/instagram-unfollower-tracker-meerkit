@@ -6,20 +6,51 @@ from pathlib import Path
 
 from insta_interface import InstagramProfile
 from meerkit.config import USERS_DIR, profile_data_dir, user_dir
+from meerkit.services.exceptions import (
+    AuthStorageError,
+    DuplicateAppUserError,
+    InvalidCookieStringError,
+    InvalidInstagramCredentialsError,
+    InvalidUpdateRequestError,
+)
 from meerkit.services.instagram_gateway import instagram_gateway
 
 
 def _read_json(path: Path, fallback: dict | list) -> dict | list:
     if not path.exists():
         return fallback
-    with open(path) as f:
-        return json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except OSError as exc:
+        raise AuthStorageError(
+            "Failed to read auth storage",
+            error_code="auth_storage_read_failed",
+            path=str(path),
+            operation="read",
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise AuthStorageError(
+            "Auth storage contains invalid JSON",
+            error_code="auth_storage_invalid_json",
+            retryable=False,
+            path=str(path),
+            operation="parse",
+        ) from exc
 
 
 def _write_json(path: Path, payload: dict | list) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(payload, f, indent=2)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+    except OSError as exc:
+        raise AuthStorageError(
+            "Failed to write auth storage",
+            error_code="auth_storage_write_failed",
+            path=str(path),
+            operation="write",
+        ) from exc
 
 
 def _hash_password(password: str) -> str:
@@ -60,10 +91,16 @@ def register_app_user(name: str, password: str) -> dict:
     """Create a new app user account identified by name/password."""
     normalized_name = name.strip()
     if not normalized_name or not password:
-        raise ValueError("name and password are required")
+        raise InvalidInstagramCredentialsError(
+            "name and password are required",
+            error_code="app_user_name_password_required",
+        )
 
     if _find_app_user_by_name(normalized_name):
-        raise ValueError("App user already exists")
+        raise DuplicateAppUserError(
+            "App user already exists",
+            app_user_name=normalized_name,
+        )
 
     app_user_id = (
         f"app_{hashlib.sha256(normalized_name.lower().encode()).hexdigest()[:16]}"
@@ -210,7 +247,11 @@ def add_instagram_user(
 ) -> dict:
     """Create an instagram user record with mandatory credentials."""
     if not csrf_token or not session_id or not user_id:
-        raise ValueError("csrf_token, session_id and user_id are required")
+        raise InvalidInstagramCredentialsError(
+            "csrf_token, session_id and user_id are required",
+            error_code="instagram_credentials_required",
+            app_user_id=app_user_id,
+        )
 
     instagram_users = get_instagram_users(app_user_id)
     fetched_username = _safe_fetch_instagram_username(
@@ -271,7 +312,12 @@ def update_instagram_user(
     if display_name is not None:
         normalized_display_name = display_name.strip()
         if not normalized_display_name:
-            raise ValueError("display_name cannot be empty")
+            raise InvalidUpdateRequestError(
+                "display_name cannot be empty",
+                error_code="display_name_empty",
+                app_user_id=app_user_id,
+                instagram_user_id=instagram_user_id,
+            )
         target_user["name"] = normalized_display_name
 
     if cookie_string is not None:
@@ -286,7 +332,11 @@ def update_instagram_user(
         parsed_csrf = (parsed.get("csrftoken") or "").strip()
 
         if not parsed_session_id or not parsed_user_id:
-            raise ValueError("cookie string must include sessionid and ds_user_id")
+            raise InvalidCookieStringError(
+                "cookie string must include sessionid and ds_user_id",
+                app_user_id=app_user_id,
+                instagram_user_id=instagram_user_id,
+            )
 
         target_user["session_id"] = parsed_session_id
         target_user["user_id"] = parsed_user_id
@@ -304,8 +354,12 @@ def update_instagram_user(
             user_id=target_user["user_id"],
         )
         if not refreshed_username:
-            raise ValueError(
+            raise InvalidCookieStringError(
                 "cookie refresh failed; verify cookie values (sessionid, ds_user_id, csrftoken)"
+                ,
+                error_code="cookie_refresh_failed",
+                app_user_id=app_user_id,
+                instagram_user_id=instagram_user_id,
             )
 
         target_user["username"] = refreshed_username
@@ -313,7 +367,12 @@ def update_instagram_user(
             target_user["name"] = refreshed_username
 
     if not touched_credentials and display_name is None:
-        raise ValueError("nothing to update")
+        raise InvalidUpdateRequestError(
+            "nothing to update",
+            error_code="empty_update_request",
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+        )
 
     instagram_users[target_index] = target_user
     _write_json(_instagram_users_file(app_user_id), instagram_users)

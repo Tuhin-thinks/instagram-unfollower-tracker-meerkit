@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from flask import Flask
 from flask_cors import CORS
 
+from meerkit.exceptions import ConfigurationError
+
 
 def _is_dev_or_test_environment() -> bool:
     return (
@@ -23,7 +25,11 @@ def _resolve_secret_key() -> str:
     if secret_key:
         return secret_key
     if os.environ.get("FLASK_ENV") == "production":
-        raise RuntimeError("APP_SECRET_KEY environment variable is required")
+        raise ConfigurationError(
+            "APP_SECRET_KEY environment variable is required",
+            error_code="missing_app_secret_key",
+            env_var="APP_SECRET_KEY",
+        )
     if _is_dev_or_test_environment():
         return "dev-secret-change-me"
     return "dev-secret-change-me"

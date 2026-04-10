@@ -30,6 +30,7 @@ from flask import Blueprint, jsonify, request
 from meerkit import config as backend_config
 from meerkit.config import CACHE_DIR
 from meerkit.routes import get_active_context
+from meerkit.routes.error_mapping import map_exception_to_response
 from meerkit.services import automation_runner, db_service
 from meerkit.services.account_handler import _build_profile
 from meerkit.services.automation_service import (
@@ -48,6 +49,11 @@ from meerkit.services.instagram_gateway import instagram_gateway
 
 bp = Blueprint("automation", __name__, url_prefix="/api/automation")
 logger = logging.getLogger(__name__)
+
+
+def _error_response(exc: Exception):
+    body, status = map_exception_to_response(exc)
+    return jsonify(body), status
 
 _VALID_LIST_TYPES = {"do_not_follow", "never_unfollow"}
 _READ_USAGE_CATEGORIES = {
@@ -265,9 +271,9 @@ def get_following_users():
             caller_method="get_following_users",
             force_refresh=force_refresh,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("Failed to fetch following list from Instagram gateway")
-        return jsonify({"error": "Failed to fetch following list"}), 502
+        return _error_response(exc)
 
     follower_ids = {record.pk_id for record in follower_records}
     user_count_map = _load_following_user_counts_bulk(
@@ -436,8 +442,8 @@ def prepare_follow():
             do_not_follow_lines=do_not_follow_lines,
             config=config,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     return jsonify(result), 201
 
@@ -480,8 +486,8 @@ def prepare_unfollow():
             config=config,
             use_auto_discovery=use_auto_discovery,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     return jsonify(result), 201
 
@@ -523,8 +529,8 @@ def prepare_left_right_follow_compare():
             right_lines=right_lines,
             config=config,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     return jsonify(result), 201
 
@@ -547,8 +553,8 @@ def confirm(action_id: str):
             app_user_id=app_user_id,
             instagram_user=instagram_user,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     return jsonify(result), 202
 
@@ -676,8 +682,8 @@ def add_to_safelist(list_type: str):
             list_type=list_type,
             raw_lines=raw_lines,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     return jsonify(result), 201
 
@@ -772,8 +778,8 @@ def add_alt_account_link_entries():
             trigger_discovery=trigger_discovery,
             instagram_user=instagram_user,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     return jsonify(result), 201
 

@@ -2,6 +2,11 @@ from datetime import datetime
 from pathlib import Path
 
 import insta_interface as ii
+from meerkit.scripts.exceptions import (
+    ScanCredentialsError,
+    ScanScriptError,
+    ScriptDataParseError,
+)
 from meerkit.services.db_service import generate_scan_diff, store_scan_info
 from meerkit.services.instagram_gateway import instagram_gateway
 
@@ -21,34 +26,58 @@ def compare_followers(
 
 def read_followers_from_file(filename: str | Path) -> list[ii.FollowerUserRecord]:
     followers = []
-    with open(filename, "r") as f:
-        lines = f.readlines()
-        for line in lines[1:]:  # skip the first line (timestamp)
-            line = line.strip()
-            if line:
-                followers.append(ii.FollowerUserRecord.from_string(line))
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            for line in lines[1:]:  # skip the first line (timestamp)
+                line = line.strip()
+                if line:
+                    followers.append(ii.FollowerUserRecord.from_string(line))
+    except OSError as exc:
+        raise ScanScriptError(
+            "Failed to read follower snapshot file",
+            error_code="snapshot_read_failed",
+            retryable=True,
+            filename=str(filename),
+        ) from exc
+    except ValueError as exc:
+        raise ScriptDataParseError(
+            "Follower snapshot contains malformed entries",
+            error_code="snapshot_parse_failed",
+            filename=str(filename),
+        ) from exc
     return followers
 
 
 def store_report(report: dict[str, set[ii.FollowerUserRecord]]) -> None:
     _current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-    with open(f"scan_report_{_current_time}.txt", "w") as f:
-        f.write(f"Report generated on: {datetime.now()}\n")
-        f.write(f"New followers: {len(report['new_followers'])}\n")
-        f.write(f"Unfollowers: {len(report['unfollowers'])}\n")
+    report_path = Path(f"scan_report_{_current_time}.txt")
+    try:
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(f"Report generated on: {datetime.now()}\n")
+            f.write(f"New followers: {len(report['new_followers'])}\n")
+            f.write(f"Unfollowers: {len(report['unfollowers'])}\n")
 
-        f.write("\nNew Followers:\n")
-        for follower in report["new_followers"]:
-            f.write(f"{follower}\n")
+            f.write("\nNew Followers:\n")
+            for follower in report["new_followers"]:
+                f.write(f"{follower}\n")
 
-        f.write("\nUnfollowers:\n")
-        for unfollower in report["unfollowers"]:
-            f.write(f"{unfollower}\n")
+            f.write("\nUnfollowers:\n")
+            for unfollower in report["unfollowers"]:
+                f.write(f"{unfollower}\n")
+    except OSError as exc:
+        raise ScanScriptError(
+            "Failed to write scan report",
+            error_code="scan_report_write_failed",
+            retryable=True,
+            path=str(report_path),
+        ) from exc
 
 
 def main():
-    raise RuntimeError(
-        "Use run_scan_for_api with explicit credentials, or pass InstagramProfile explicitly."
+    raise ScanCredentialsError(
+        "Use run_scan_for_api with explicit credentials, or pass InstagramProfile explicitly.",
+        error_code="scan_entrypoint_not_supported",
     )
 
 

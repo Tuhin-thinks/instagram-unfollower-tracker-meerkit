@@ -1,8 +1,14 @@
 from flask import Blueprint, jsonify, request, session
 
+from meerkit.routes.error_mapping import map_exception_to_response
 from meerkit.services import auth_service, db_service
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+def _error_response(exc: Exception):
+    body, status = map_exception_to_response(exc)
+    return jsonify(body), status
 
 
 def _sanitize_instagram_user_payload(instagram_user: dict | None) -> dict | None:
@@ -59,8 +65,8 @@ def register():
 
     try:
         user = auth_service.register_app_user(name, password)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     return jsonify(user), 201
 
@@ -170,8 +176,8 @@ def create_instagram_user():
             session_id=session_id,
             user_id=user_id,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     _sync_active_instagram_user_session(app_user_id)
 
@@ -223,8 +229,8 @@ def patch_instagram_user(instagram_user_id: str):
             display_name=display_name,
             cookie_string=cookie_string,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     if not instagram_user:
         return jsonify({"error": "Instagram user not found"}), 404

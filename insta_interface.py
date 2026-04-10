@@ -10,6 +10,13 @@ from urllib.parse import quote, urlparse
 import requests
 import tqdm
 
+from insta_interface_exceptions import (
+    InterfaceEntrypointError,
+    InvalidFollowerDataError,
+    ProfileLinkParseError,
+    RelationshipFetchError,
+    TargetUserResolutionError,
+)
 from meerkit.config import (
     INSTA_ACTION_RETRY_COUNT,
     INSTA_FOLLOWERS_FETCH_PAGE_SIZE,
@@ -20,16 +27,6 @@ url = "https://www.instagram.com/graphql/query"
 _topsearch_url = "https://www.instagram.com/web/search/topsearch/"
 _follow_doc_id = "9740159112729312"
 _follow_lsd = "vfndR6YI1o9Mb1SorLFoGO"
-
-
-class RelationshipFetchError(Exception):
-    """Raised when the Instagram API response cannot be parsed for a relationship edge."""
-
-    def __init__(self, edge_name: str, reason: str) -> None:
-        label = "followers" if "followed_by" in edge_name else "following"
-        super().__init__(f"Could not fetch {label}: {reason}")
-        self.edge_name = edge_name
-        self.label = label
 
 
 @dataclass(frozen=True)
@@ -112,14 +109,16 @@ def _extract_username_from_profile_link(instagram_profile_link: str) -> str:
     parsed = urlparse(instagram_profile_link.strip())
     path_parts = [part for part in parsed.path.split("/") if part]
     if not path_parts:
-        raise ValueError(
-            f"Could not extract username from profile link: {instagram_profile_link}"
+        raise ProfileLinkParseError(
+            f"Could not extract username from profile link: {instagram_profile_link}",
+            instagram_profile_link=instagram_profile_link,
         )
 
     username = path_parts[0].strip()
     if not username:
-        raise ValueError(
-            f"Could not extract username from profile link: {instagram_profile_link}"
+        raise ProfileLinkParseError(
+            f"Could not extract username from profile link: {instagram_profile_link}",
+            instagram_profile_link=instagram_profile_link,
         )
     return username
 
@@ -172,9 +171,11 @@ def unfollow_user(
 
     user_id = load_user_pk_from_saved_data(username)
 
-    assert isinstance(user_id, str), (
-        f"User ID for {username} not found or invalid. Cannot proceed with unfollowing."
-    )
+    if not isinstance(user_id, str):
+        raise TargetUserResolutionError(
+            f"User ID for {username} not found or invalid. Cannot proceed with unfollowing.",
+            username=username,
+        )
 
     print(f"{user_id=}")
 
@@ -672,7 +673,12 @@ def get_current_followers(
     followers_count = __user_data["account_followers_count"]
     username = __user_data["username"]
     print(f"[i] Followers count for {username}: {followers_count}")
-    assert isinstance(followers_count, int), "Invalid followers count in user data"
+    if not isinstance(followers_count, int):
+        raise InvalidFollowerDataError(
+            "Invalid followers count in user data",
+            username=username,
+            account_followers_count=followers_count,
+        )
     _max_fetch_count = INSTA_FOLLOWERS_FETCH_PAGE_SIZE
     follower_user_data_list: list[FollowerUserRecord] = []
 
@@ -741,6 +747,6 @@ def get_current_followers(
 
 
 if __name__ == "__main__":
-    raise RuntimeError(
+    raise InterfaceEntrypointError(
         "Instantiate InstagramProfile and call functions with explicit credentials."
     )

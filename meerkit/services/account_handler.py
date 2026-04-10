@@ -14,6 +14,12 @@ from meerkit.config import (
 )
 from meerkit.services import db_service, relationship_cache, user_details_cache
 from meerkit.services.downloader import enqueue_image_download
+from meerkit.services.exceptions import (
+    InvalidPredictionInputError,
+    InvalidRelationshipTypeError,
+    PredictionNotFoundError,
+    TargetResolutionError,
+)
 from meerkit.services.instagram_gateway import instagram_gateway
 
 _PREDICTION_TTL = timedelta(days=PREDICTION_TTL_DAYS)
@@ -193,7 +199,10 @@ def _normalize_relationship_types(relationship_type: str | None) -> set[str]:
         return set(_RELATIONSHIP_TYPES)
     normalized = relationship_type.strip().lower()
     if normalized not in _RELATIONSHIP_TYPES:
-        raise ValueError("relationship_type must be either 'followers' or 'following'")
+        raise InvalidRelationshipTypeError(
+            "relationship_type must be either 'followers' or 'following'",
+            relationship_type=relationship_type,
+        )
     return {normalized}
 
 
@@ -906,7 +915,10 @@ def compute_followback_chances(
 ):
     """Compute follow-back probability for one target user using cached profile data."""
     if not app_user_id:
-        raise ValueError("app_user_id is required to compute followback chances")
+        raise InvalidPredictionInputError(
+            "app_user_id is required to compute followback chances",
+            error_code="app_user_id_required",
+        )
     context = _load_followback_computation_context(
         pk_id=pk_id,
         reference_profile_id=reference_profile_id,
@@ -965,7 +977,10 @@ def request_followback_prediction(
 ) -> dict:
     username, user_id = _normalize_prediction_target_input(username, user_id)
     if not username and not user_id:
-        raise ValueError("username, profile link, or user_id is required")
+        raise InvalidPredictionInputError(
+            "username, profile link, or user_id is required",
+            error_code="target_identifier_required",
+        )
 
     profile = _build_profile(instagram_user)
     target_profile_id = user_id or instagram_gateway.resolve_target_user_pk(
@@ -977,7 +992,13 @@ def request_followback_prediction(
         caller_method="request_followback_prediction",
     )
     if not target_profile_id:
-        raise ValueError("Could not resolve target instagram user")
+        raise TargetResolutionError(
+            "Could not resolve target instagram user",
+            username=username,
+            user_id=user_id,
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user.get("instagram_user_id"),
+        )
 
     cached_profile = db_service.get_target_profile(
         app_user_id, instagram_user["instagram_user_id"], target_profile_id
@@ -1104,7 +1125,10 @@ def refresh_followback_prediction(
 ) -> dict:
     prediction = db_service.get_prediction(prediction_id)
     if not prediction:
-        raise ValueError("Prediction not found")
+        raise PredictionNotFoundError(
+            "Prediction not found",
+            prediction_id=prediction_id,
+        )
 
     profile = _build_profile(instagram_user)
     target_profile_id = prediction["target_profile_id"]
@@ -1430,7 +1454,10 @@ def record_prediction_feedback(
 ) -> dict:
     prediction = db_service.get_prediction(prediction_id)
     if not prediction:
-        raise ValueError("Prediction not found")
+        raise PredictionNotFoundError(
+            "Prediction not found",
+            prediction_id=prediction_id,
+        )
 
     evidence: dict = {"prediction_type": prediction.get("prediction_type")}
     actual_probability = prediction.get("probability")

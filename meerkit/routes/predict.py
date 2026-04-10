@@ -3,9 +3,15 @@ from typing import cast
 from flask import Blueprint, jsonify, request
 
 from meerkit.routes import get_active_context
+from meerkit.routes.error_mapping import map_exception_to_response
 from meerkit.services import account_handler, db_service, prediction_runner
 
 bp = Blueprint("predict", __name__, url_prefix="/api")
+
+
+def _error_response(exc: Exception):
+    body, status = map_exception_to_response(exc)
+    return jsonify(body), status
 
 
 def _active_scope() -> tuple[str | None, dict | tuple[dict, int]]:
@@ -42,8 +48,8 @@ def create_followback_prediction():
             relationship_type=relationship_type,
             prediction_session_id=prediction_session_id,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     status_code = 202 if result.get("task") else 200
     return jsonify(result), status_code
@@ -69,8 +75,8 @@ def get_relationship_cache_status(target_profile_id: str):
             target_profile_id=target_profile_id,
             sync_counts=sync_counts,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
     return jsonify(payload)
 
 
@@ -98,8 +104,8 @@ def refresh_relationship_cache(target_profile_id: str):
             force_background=True,
             relationship_type=relationship_type,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return _error_response(exc)
 
     return jsonify(result), 202 if result.get("task") else 200
 
@@ -198,8 +204,8 @@ def patch_prediction_feedback(prediction_id: str):
             expected_direction=expected_direction,
             expected_value=expected_value,
         )
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 404
+    except Exception as exc:
+        return _error_response(exc)
     return jsonify(assessment)
 
 
