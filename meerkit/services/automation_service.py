@@ -757,6 +757,11 @@ def prepare_batch_unfollow(
         for entry in candidates
         if str(entry.get("normalized_user_id") or "").strip()
     }
+    deactivated_by_user_id = db_service.get_target_profile_deactivated_map(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_ids=metadata_target_user_ids,
+    )
     for alt_identity_keys in linked_alt_identity_keys_by_primary.values():
         for alt_identity_key in alt_identity_keys:
             alt_identity_key_str = str(alt_identity_key).strip()
@@ -782,6 +787,10 @@ def prepare_batch_unfollow(
             continue
 
         normalized_user_id = str(entry.get("normalized_user_id") or "").strip()
+        if normalized_user_id and deactivated_by_user_id.get(normalized_user_id, False):
+            excluded.append({**entry, "exclusion_reason": "account_not_accessible"})
+            continue
+
         if (
             skip_mutual
             and normalized_user_id
