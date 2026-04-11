@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from meerkit.exceptions import MeerkitError
 
 
