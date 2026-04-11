@@ -758,6 +758,7 @@ dependencies = [
     { name = "mkdocs-material" },
     { name = "mkdocs-minify-plugin" },
     { name = "pymdown-extensions" },
+    { name = "pytest" },
     { name = "requests" },
     { name = "tqdm" },
 ]
@@ -783,6 +784,7 @@ requires-dist = [
     { name = "mkdocs-material", specifier = ">=9.7.5" },
     { name = "mkdocs-minify-plugin", specifier = ">=0.8.0" },
     { name = "pymdown-extensions", specifier = ">=10.21" },
+    { name = "pytest", specifier = ">=9.0.2" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "tqdm", specifier = ">=4.67.3" },
 ]

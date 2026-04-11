@@ -284,21 +284,33 @@ def get_following_users():
         force_refresh=force_refresh,
     )
 
-    users = [
-        {
-            "user_id": r.pk_id,
-            "username": r.username,
-            "full_name": r.full_name,
-            "is_private": r.is_private,
-            "profile_pic_url": r.profile_pic_url,
-            "follows_you": r.pk_id in follower_ids,
-            **user_count_map.get(
-                r.pk_id,
-                {"follower_count": None, "following_count": None},
-            ),
-        }
-        for r in following_records
-    ]
+    users = []
+    for record in following_records:
+        summary = user_count_map.get(
+            record.pk_id,
+            {
+                "follower_count": None,
+                "following_count": None,
+                "being_followed_by_account": None,
+            },
+        )
+        follows_you_signal = summary.get("being_followed_by_account")
+        follows_you = (
+            follows_you_signal
+            if isinstance(follows_you_signal, bool)
+            else record.pk_id in follower_ids
+        )
+        users.append(
+            {
+                "user_id": record.pk_id,
+                "username": record.username,
+                "full_name": record.full_name,
+                "is_private": record.is_private,
+                "profile_pic_url": record.profile_pic_url,
+                "follows_you": follows_you,
+                **summary,
+            }
+        )
     return jsonify(
         {
             "users": users,
@@ -316,7 +328,7 @@ def _load_following_user_counts(
     profile,
     user_id: str,
     force_refresh: bool,
-) -> dict[str, int | None]:
+) -> dict[str, int | bool | None]:
     try:
         summary = instagram_gateway.get_target_user_data(
             app_user_id=app_user_id,
@@ -328,14 +340,22 @@ def _load_following_user_counts(
             force_refresh=force_refresh,
         )
     except Exception:
-        return {"follower_count": None, "following_count": None}
+        return {
+            "follower_count": None,
+            "following_count": None,
+            "being_followed_by_account": None,
+        }
 
     follower_count = summary.get("account_followers_count")
     following_count = summary.get("account_following_count")
+    being_followed_by_account = summary.get("being_followed_by_account")
     return {
         "follower_count": follower_count if isinstance(follower_count, int) else None,
         "following_count": following_count
         if isinstance(following_count, int)
+        else None,
+        "being_followed_by_account": being_followed_by_account
+        if isinstance(being_followed_by_account, bool)
         else None,
     }
 
@@ -347,7 +367,7 @@ def _load_following_user_counts_bulk(
     instagram_user: dict,
     user_ids: list[str],
     force_refresh: bool,
-) -> dict[str, dict[str, int | None]]:
+) -> dict[str, dict[str, int | bool | None]]:
     unique_user_ids = list(dict.fromkeys(user_ids))
     if not unique_user_ids:
         return {}
@@ -369,7 +389,7 @@ def _load_following_user_counts_bulk(
             for user_id in unique_user_ids
         }
 
-    def _fetch_counts(user_id: str) -> tuple[str, dict[str, int | None]]:
+    def _fetch_counts(user_id: str) -> tuple[str, dict[str, int | bool | None]]:
         profile = getattr(_THREAD_LOCAL_PROFILE, "profile", None)
         profile_owner = getattr(_THREAD_LOCAL_PROFILE, "profile_owner", None)
         if profile is None or profile_owner != reference_profile_id:
@@ -387,7 +407,7 @@ def _load_following_user_counts_bulk(
             ),
         )
 
-    counts_by_user: dict[str, dict[str, int | None]] = {}
+    counts_by_user: dict[str, dict[str, int | bool | None]] = {}
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
             executor.submit(_fetch_counts, user_id): user_id
@@ -402,6 +422,7 @@ def _load_following_user_counts_bulk(
                 counts_by_user[user_id] = {
                     "follower_count": None,
                     "following_count": None,
+                    "being_followed_by_account": None,
                 }
 
     return counts_by_user

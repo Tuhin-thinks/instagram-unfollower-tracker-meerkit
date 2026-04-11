@@ -9,10 +9,12 @@ import random as _random
 import re as _re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from uuid import uuid4
 
 import insta_interface as ii
+from meerkit import config as backend_config
 from meerkit.config import (
     AUTOMATION_INTER_ACTION_DELAY_SECONDS as _INTER_ACTION_DELAY_SECONDS,
 )
@@ -280,6 +282,72 @@ def _run_discovery_for_identity_keys(
         "queued_count": len(queued_prediction_ids),
         "skipped_discovery_identity_keys": skipped_identity_keys,
     }
+
+
+def _prefetch_followed_by_flags(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    instagram_user: dict | None,
+    target_user_ids: set[str],
+) -> dict[str, bool]:
+    if not instagram_user:
+        return {}
+
+    unique_target_user_ids = sorted(
+        {
+            str(target_user_id).strip()
+            for target_user_id in target_user_ids
+            if str(target_user_id).strip()
+        }
+    )
+    if not unique_target_user_ids:
+        return {}
+
+    configured_max_workers = int(
+        getattr(backend_config, "MAX_USER_DETAILS_FETCH_THREADS", 8) or 8
+    )
+    max_workers = max(1, min(4, configured_max_workers, len(unique_target_user_ids)))
+
+    def _fetch_one(target_user_id: str) -> tuple[str, bool | None]:
+        profile = _get_cached_profile(instagram_user)
+        try:
+            summary = instagram_gateway.get_target_user_data(
+                app_user_id=app_user_id,
+                instagram_user_id=reference_profile_id,
+                profile=profile,
+                target_user_id=target_user_id,
+                caller_service="automation_service",
+                caller_method="prepare_batch_unfollow",
+                force_refresh=False,
+            )
+        except Exception:
+            return target_user_id, None
+
+        followed_by = summary.get("being_followed_by_account")
+        if not isinstance(followed_by, bool):
+            return target_user_id, None
+        return target_user_id, followed_by
+
+    followed_by_flags: dict[str, bool] = {}
+    if max_workers == 1:
+        for target_user_id in unique_target_user_ids:
+            user_id, followed_by = _fetch_one(target_user_id)
+            if isinstance(followed_by, bool):
+                followed_by_flags[user_id] = followed_by
+        return followed_by_flags
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_fetch_one, target_user_id): target_user_id
+            for target_user_id in unique_target_user_ids
+        }
+        for future in as_completed(futures):
+            user_id, followed_by = future.result()
+            if isinstance(followed_by, bool):
+                followed_by_flags[user_id] = followed_by
+
+    return followed_by_flags
 
 
 def add_alt_account_links(
@@ -684,6 +752,23 @@ def prepare_batch_unfollow(
         target_profile_id=reference_profile_id,
         relationship_type="followers",
     )
+    metadata_target_user_ids: set[str] = {
+        str(entry.get("normalized_user_id") or "").strip()
+        for entry in candidates
+        if str(entry.get("normalized_user_id") or "").strip()
+    }
+    for alt_identity_keys in linked_alt_identity_keys_by_primary.values():
+        for alt_identity_key in alt_identity_keys:
+            alt_identity_key_str = str(alt_identity_key).strip()
+            if _USER_ID_RE.fullmatch(alt_identity_key_str):
+                metadata_target_user_ids.add(alt_identity_key_str)
+    followed_by_flags = _prefetch_followed_by_flags(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        instagram_user=instagram_user,
+        target_user_ids=metadata_target_user_ids,
+    )
+    skip_mutual = bool(config.get("skip_mutual", True))
 
     selected: list[dict] = []
     excluded: list[dict] = []
@@ -696,12 +781,27 @@ def prepare_batch_unfollow(
             excluded.append({**entry, "exclusion_reason": "safelist"})
             continue
 
+        normalized_user_id = str(entry.get("normalized_user_id") or "").strip()
+        if (
+            skip_mutual
+            and normalized_user_id
+            and followed_by_flags.get(normalized_user_id)
+        ):
+            excluded.append({**entry, "exclusion_reason": "already_follows_you"})
+            continue
+
         candidate_alt_keys: set[str] = set()
         for key in candidate_identity_aliases[index]:
             candidate_alt_keys.update(
                 linked_alt_identity_keys_by_primary.get(key, set())
             )
-        if candidate_alt_keys and (candidate_alt_keys & active_follower_ids):
+        alt_followed_by_metadata = any(
+            followed_by_flags.get(str(alt_identity_key).strip(), False)
+            for alt_identity_key in candidate_alt_keys
+        )
+        if candidate_alt_keys and (
+            (candidate_alt_keys & active_follower_ids) or alt_followed_by_metadata
+        ):
             excluded.append(
                 {
                     **entry,
