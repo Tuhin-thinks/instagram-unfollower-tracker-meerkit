@@ -144,6 +144,7 @@ const loadingDiffId = ref<string | null>(null)
 const modalExportMessage = ref('')
 const accessibilityRefreshMessage = ref('')
 const refreshingAccessibility = ref(false)
+const excludeDeactivatedFromCopy = ref(false)
 const activeModalTab = ref<'new_followers' | 'unfollowers'>('new_followers')
 
 async function viewDiff(diffId: string) {
@@ -152,6 +153,7 @@ async function viewDiff(diffId: string) {
     selectedDiff.value = await api.getDiff(diffId)
     activeModalTab.value = 'new_followers'
     modalExportMessage.value = ''
+    excludeDeactivatedFromCopy.value = false
   } finally {
     loadingDiffId.value = null
   }
@@ -162,6 +164,7 @@ function closeDiffModal() {
   activeModalTab.value = 'new_followers'
   modalExportMessage.value = ''
   accessibilityRefreshMessage.value = ''
+  excludeDeactivatedFromCopy.value = false
 }
 
 function formatDate(iso: string) {
@@ -172,11 +175,24 @@ function safeCount(value: number | null | undefined) {
   return typeof value === 'number' ? value : 0
 }
 
+function currentUnfollowerRowsForCopy() {
+  return (selectedDiff.value?.unfollowers || []).filter((item) => {
+    if (!excludeDeactivatedFromCopy.value) {
+      return true
+    }
+    return !item.account_not_accessible
+  })
+}
+
 function currentUnfollowerUsernames() {
-  return (selectedDiff.value?.unfollowers || [])
+  return currentUnfollowerRowsForCopy()
     .map((item) => item.username?.trim())
     .filter((name): name is string => Boolean(name))
 }
+
+const deactivatedUnfollowerCount = computed(() => {
+  return (selectedDiff.value?.unfollowers || []).filter((item) => item.account_not_accessible).length
+})
 
 function usernamesToText(usernames: string[]) {
   return `${usernames.join('\n')}\n`
@@ -185,12 +201,16 @@ function usernamesToText(usernames: string[]) {
 async function copyUnfollowersFromModal() {
   const usernames = currentUnfollowerUsernames()
   if (!usernames.length) {
-    modalExportMessage.value = 'No unfollower usernames available to copy.'
+    modalExportMessage.value = excludeDeactivatedFromCopy.value
+      ? 'No accessible unfollower usernames available to copy.'
+      : 'No unfollower usernames available to copy.'
     return
   }
   try {
     await navigator.clipboard.writeText(usernamesToText(usernames))
-    modalExportMessage.value = `Copied ${usernames.length} usernames.`
+    modalExportMessage.value = excludeDeactivatedFromCopy.value
+      ? `Copied ${usernames.length} usernames, excluding deactivated accounts.`
+      : `Copied ${usernames.length} usernames.`
   } catch {
     modalExportMessage.value = 'Clipboard copy failed. Please check browser permissions.'
   }
@@ -507,6 +527,22 @@ async function refreshAccessibilityFromModal() {
               <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h4 class="text-sm font-semibold text-slate-300">Unfollowers</h4>
                 <div class="flex flex-wrap items-center gap-2">
+                  <label
+                    class="inline-flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-slate-300"
+                  >
+                    <input
+                      v-model="excludeDeactivatedFromCopy"
+                      type="checkbox"
+                      class="h-3.5 w-3.5 rounded border-white/20 bg-transparent text-rose-400 focus:ring-rose-400/40"
+                    >
+                    <span>Exclude deactivated on copy</span>
+                    <span
+                      v-if="deactivatedUnfollowerCount"
+                      class="text-[10px] text-slate-500"
+                    >
+                      {{ deactivatedUnfollowerCount }} hidden
+                    </span>
+                  </label>
                   <button
                     class="btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold"
                     @click="copyUnfollowersFromModal"
