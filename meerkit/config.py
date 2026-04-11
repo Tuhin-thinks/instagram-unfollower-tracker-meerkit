@@ -88,6 +88,12 @@ PREDICTION_STALE_TIMEOUT_MINUTES = int(
 SCAN_STALE_STARTUP_GRACE_SECONDS = int(
     os.environ.get("SCAN_STALE_STARTUP_GRACE_SECONDS", "5")
 )
+# Accessibility status on diff/history rows can be sourced from target_profiles
+# when the DB row is still fresh enough to trust over stale diff snapshots.
+# This is intentionally in hours so operators can tune low/high without math.
+ACCESSIBILITY_DB_STATUS_MAX_AGE_HOURS = int(
+    os.environ.get("ACCESSIBILITY_DB_STATUS_MAX_AGE_HOURS", "24")
+)
 # Default and maximum day-window for /history responses.
 HISTORY_DEFAULT_DAYS = int(os.environ.get("HISTORY_DEFAULT_DAYS", "7"))
 HISTORY_MAX_DAYS = int(os.environ.get("HISTORY_MAX_DAYS", "7"))

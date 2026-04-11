@@ -142,6 +142,8 @@ const groupedHistory = computed<ScanDateGroup[]>(() => {
 const selectedDiff = ref<DiffResult | null>(null)
 const loadingDiffId = ref<string | null>(null)
 const modalExportMessage = ref('')
+const accessibilityRefreshMessage = ref('')
+const refreshingAccessibility = ref(false)
 const activeModalTab = ref<'new_followers' | 'unfollowers'>('new_followers')
 
 async function viewDiff(diffId: string) {
@@ -159,6 +161,7 @@ function closeDiffModal() {
   selectedDiff.value = null
   activeModalTab.value = 'new_followers'
   modalExportMessage.value = ''
+  accessibilityRefreshMessage.value = ''
 }
 
 function formatDate(iso: string) {
@@ -219,6 +222,35 @@ async function handleLinkedAccountsSaved() {
     return
   }
   selectedDiff.value = await api.getDiff(diffId)
+}
+
+function hasRowsInActiveTab() {
+  if (!selectedDiff.value) {
+    return false
+  }
+  if (activeModalTab.value === 'new_followers') {
+    return selectedDiff.value.new_followers.length > 0
+  }
+  return selectedDiff.value.unfollowers.length > 0
+}
+
+async function refreshAccessibilityFromModal() {
+  const diff = selectedDiff.value
+  if (!diff || refreshingAccessibility.value || !hasRowsInActiveTab()) {
+    return
+  }
+
+  refreshingAccessibility.value = true
+  accessibilityRefreshMessage.value = ''
+  try {
+    const listName = activeModalTab.value === 'new_followers' ? 'followers' : 'unfollowers'
+    selectedDiff.value = await api.refreshDiffAccessibility(diff.diff_id, listName)
+    accessibilityRefreshMessage.value = 'Accessibility status refreshed from live Instagram data.'
+  } catch {
+    accessibilityRefreshMessage.value = 'Could not refresh accessibility status right now.'
+  } finally {
+    refreshingAccessibility.value = false
+  }
 }
 </script>
 
@@ -437,6 +469,24 @@ async function handleLinkedAccountsSaved() {
                 <p class="text-xs text-rose-400/70 mt-1 font-medium">Unfollowers</p>
               </button>
             </div>
+
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p class="text-[11px] text-slate-400">
+                Need a live check? Refresh accessibility for the current tab.
+              </p>
+              <button
+                class="btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold"
+                :disabled="refreshingAccessibility || !hasRowsInActiveTab()"
+                @click="refreshAccessibilityFromModal"
+              >
+                <span
+                  v-if="refreshingAccessibility"
+                  class="inline-block w-3 h-3 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mr-1"
+                />
+                {{ refreshingAccessibility ? 'Refreshing...' : 'Force refresh accessibility' }}
+              </button>
+            </div>
+            <p v-if="accessibilityRefreshMessage" class="text-xs text-slate-400 mb-3">{{ accessibilityRefreshMessage }}</p>
 
             <!-- New followers list -->
             <template v-if="activeModalTab === 'new_followers' && selectedDiff.new_followers.length">

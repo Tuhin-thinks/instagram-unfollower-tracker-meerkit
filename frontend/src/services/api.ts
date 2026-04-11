@@ -136,6 +136,18 @@ export const getAnalytics = (days: number = 30) =>
 export const getDiff = (diffId: string) =>
   http.get<DiffResult>(`/diff/${diffId}`, { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)
 
+export const refreshDiffAccessibility = (
+  diffId: string,
+  listName: 'followers' | 'unfollowers' | 'all' = 'unfollowers',
+) =>
+  http
+    .post<DiffResult>(
+      `/diff/${diffId}/accessibility/refresh`,
+      { list_name: listName },
+      { params: { profile_id: activeInstagramUserId } },
+    )
+    .then((r) => r.data)
+
 export const createFollowBackPrediction = (payload: {
   username?: string
   user_id?: string
