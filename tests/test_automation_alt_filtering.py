@@ -29,6 +29,28 @@ def _patch_common_db(monkeypatch):
     )
 
 
+def test_prepare_batch_follow_returns_selected_items(monkeypatch):
+    _patch_common_db(monkeypatch)
+
+    result = automation_service.prepare_batch_follow(
+        app_user_id="app_1",
+        reference_profile_id="ig_1",
+        candidate_lines=["known_user"],
+        do_not_follow_lines=[],
+        config={"max_follow_count": 50},
+    )
+
+    assert result["selected_count"] == 1
+    assert result["selected_items"] == [
+        {
+            "raw_input": "known_user",
+            "normalized_username": "known_user",
+            "normalized_user_id": None,
+            "display_username": "known_user",
+        }
+    ]
+
+
 def test_prepare_batch_unfollow_excludes_when_linked_alt_follows_you(monkeypatch):
     _patch_common_db(monkeypatch)
     monkeypatch.setattr(

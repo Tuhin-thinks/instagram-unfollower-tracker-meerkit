@@ -51,6 +51,7 @@ def test_sqlite_init_backfills_automation_heartbeat_column(tmp_path):
     assert "last_heartbeat_at" in columns
 
 
+
 def test_sqlite_init_backfills_prediction_session_column(tmp_path):
     db_path = tmp_path / "legacy_predictions.sqlite"
     with sqlite3.connect(db_path) as conn:
@@ -112,6 +113,7 @@ def test_update_automation_action_persists_last_heartbeat(monkeypatch, tmp_path)
     assert refreshed is not None
     assert refreshed["last_heartbeat_at"] == heartbeat_at
     assert refreshed["started_at"] == heartbeat_at
+
 
 
 def test_get_action_status_keeps_recent_heartbeat_running(monkeypatch):
