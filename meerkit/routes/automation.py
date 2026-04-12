@@ -45,8 +45,8 @@ from meerkit.services.automation_service import (
     remove_alt_link,
     remove_safelist_entry,
 )
-from meerkit.services.instagram_gateway import instagram_gateway
 from meerkit.services.downloader import enqueue_image_download
+from meerkit.services.instagram_gateway import instagram_gateway
 
 bp = Blueprint("automation", __name__, url_prefix="/api/automation")
 logger = logging.getLogger(__name__)
