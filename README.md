@@ -1,4 +1,40 @@
 
+<div align="center">
+
+<!-- Status Banner Start -->
+<table>
+  <tr>
+    <td>
+      <p align="center">
+        <img src="https://img.shields.io/badge/STATUS-TEMPORARILY%20UNAVAILABLE-red?style=for-the-badge" alt="Status: Temporarily Unavailable"/>
+      </p>
+      <h2>⚠️ Instagram API Breaking Change — Service Disruption</h2>
+      <p>
+        Instagram has introduced a new CSRF protection mechanism using the <code>fb_dtsg</code> variable,<br>
+        which now includes a <strong>checksum and timestamp</strong> on every API request.<br><br>
+        This change blocks the existing session-based authentication method used by Meerkit<br>
+        to access Instagram data (followers, following, profile info, etc.).<br><br>
+        <strong>What does this mean?</strong><br>
+        Some features — particularly the <em>unfollwer scan, follow/unfollow automation, and batch operations</em><br>
+        — are currently <strong>non-functional</strong> until we adapt to the new API requirements.
+      </p>
+      <p>
+        <strong>What we're doing:</strong><br>
+        We are actively working on migrating to <strong>Instagram's official GraphQL API</strong>,<br>
+        which provides a more stable, authenticated, and supported way to access data.
+      </p>
+      <p>
+        <em>We appreciate your patience while we work on this fix.</em>
+      </p>
+    </td>
+  </tr>
+</table>
+<!-- Status Banner End -->
+
+</div>
+
+---
+
 # Meerkit – Instagram Unfollower Tracker & Growth Toolkit
 
 👉🏻 Find out who doesn't follow you back on Instagram and generate a clean unfollower list.
